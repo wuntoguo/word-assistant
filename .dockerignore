@@ -1,0 +1,16 @@
+node_modules
+dist
+server/node_modules
+server/dist
+server/data.db
+server/data.db-wal
+server/data.db-shm
+server/.env
+*.local
+.git
+.gitignore
+.dockerignore
+Dockerfile
+fly.toml
+README.md
+readme
