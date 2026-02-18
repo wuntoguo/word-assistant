@@ -14,6 +14,7 @@ export interface Word {
   reviewCount: number;
   memoryStage: number;     // 0-5, stages in spaced repetition
   updatedAt: string;       // ISO datetime string for sync
+  archived?: boolean;      // true = skip during review
 }
 
 export interface User {

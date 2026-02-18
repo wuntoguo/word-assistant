@@ -27,6 +27,7 @@ interface ClientWord {
   nextReviewDate: string;
   reviewCount: number;
   memoryStage: number;
+  archived?: boolean;
   updatedAt: string;
 }
 
@@ -44,6 +45,7 @@ function clientToDb(cw: ClientWord, userId: string): DbWord {
     next_review_date: cw.nextReviewDate,
     review_count: cw.reviewCount,
     memory_stage: cw.memoryStage,
+    archived: cw.archived ? 1 : 0,
     updated_at: cw.updatedAt || new Date().toISOString(),
   };
 }
@@ -61,6 +63,7 @@ function dbToClient(dw: DbWord): ClientWord {
     nextReviewDate: dw.next_review_date,
     reviewCount: dw.review_count,
     memoryStage: dw.memory_stage,
+    archived: dw.archived === 1,
     updatedAt: dw.updated_at,
   };
 }
@@ -75,8 +78,13 @@ function mergeWord(clientWord: DbWord, serverWord: DbWord): DbWord {
   const clientExamples: string[] = JSON.parse(clientWord.examples);
   const serverExamples: string[] = JSON.parse(serverWord.examples);
 
+  // For archived: if either side archived it, respect that (use latest updatedAt to decide)
+  const archived = clientWord.updated_at > serverWord.updated_at
+    ? clientWord.archived
+    : serverWord.archived;
+
   return {
-    id: serverWord.id, // keep server's ID
+    id: serverWord.id,
     user_id: serverWord.user_id,
     word: serverWord.word,
     phonetic: clientWord.phonetic || serverWord.phonetic,
@@ -88,6 +96,7 @@ function mergeWord(clientWord: DbWord, serverWord: DbWord): DbWord {
     next_review_date: recalculateNextReviewDate(mergedStage),
     review_count: mergedReviewCount,
     memory_stage: mergedStage,
+    archived,
     updated_at: new Date().toISOString(),
   };
 }

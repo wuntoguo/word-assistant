@@ -38,6 +38,7 @@ db.exec(`
     next_review_date TEXT NOT NULL,
     review_count INTEGER DEFAULT 0,
     memory_stage INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0,
     updated_at TEXT DEFAULT (datetime('now')),
     UNIQUE(user_id, word)
   );
@@ -45,6 +46,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_words_user_id ON words(user_id);
   CREATE INDEX IF NOT EXISTS idx_words_updated_at ON words(user_id, updated_at);
 `);
+
+// Migrate: add archived column if it doesn't exist
+try {
+  db.exec(`ALTER TABLE words ADD COLUMN archived INTEGER DEFAULT 0`);
+} catch {
+  // Column already exists
+}
 
 // Migrate: add password_hash column if it doesn't exist
 try {
@@ -108,6 +116,7 @@ export interface DbWord {
   next_review_date: string;
   review_count: number;
   memory_stage: number;
+  archived: number;      // 0 = active, 1 = archived
   updated_at: string;
 }
 
@@ -130,8 +139,8 @@ export function getWordByUserAndWord(userId: string, word: string): DbWord | und
 
 export function upsertWord(word: DbWord): void {
   db.prepare(`
-    INSERT INTO words (id, user_id, word, phonetic, audio_url, part_of_speech, definitions, examples, date_added, next_review_date, review_count, memory_stage, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO words (id, user_id, word, phonetic, audio_url, part_of_speech, definitions, examples, date_added, next_review_date, review_count, memory_stage, archived, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, word) DO UPDATE SET
       phonetic = excluded.phonetic,
       audio_url = excluded.audio_url,
@@ -142,12 +151,13 @@ export function upsertWord(word: DbWord): void {
       next_review_date = excluded.next_review_date,
       review_count = excluded.review_count,
       memory_stage = excluded.memory_stage,
+      archived = excluded.archived,
       updated_at = excluded.updated_at
   `).run(
     word.id, word.user_id, word.word, word.phonetic, word.audio_url,
     word.part_of_speech, word.definitions, word.examples,
     word.date_added, word.next_review_date, word.review_count,
-    word.memory_stage, word.updated_at
+    word.memory_stage, word.archived ? 1 : 0, word.updated_at
   );
 }
 

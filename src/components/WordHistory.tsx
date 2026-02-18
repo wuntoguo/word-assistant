@@ -1,17 +1,31 @@
 import { useState, useMemo } from 'react';
-import { useAtomValue } from 'jotai';
+import { useAtom } from 'jotai';
 import { wordsAtom } from '../store';
 import { getWeekRange, getWordsInDateRange, exportToCSV } from '../utils';
 
 export default function WordHistory() {
-  const words = useAtomValue(wordsAtom);
+  const [words, setWords] = useAtom(wordsAtom);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const activeWords = useMemo(() => words.filter((w) => !w.archived), [words]);
+  const archivedWords = useMemo(() => words.filter((w) => w.archived), [words]);
 
   const weekRange = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
   const weekWords = useMemo(
-    () => getWordsInDateRange(words, weekRange.start, weekRange.end),
-    [words, weekRange]
+    () => getWordsInDateRange(activeWords, weekRange.start, weekRange.end),
+    [activeWords, weekRange]
   );
+
+  const toggleArchive = (wordId: string, archive: boolean) => {
+    setWords((prev) =>
+      prev.map((w) =>
+        w.id === wordId
+          ? { ...w, archived: archive, updatedAt: new Date().toISOString() }
+          : w
+      )
+    );
+  };
 
   // Group words by date
   const groupedByDate = useMemo(() => {
@@ -129,9 +143,20 @@ export default function WordHistory() {
                           {w.definitions[0]}
                         </p>
                       </div>
-                      <span className={`flex-shrink-0 ml-3 px-2.5 py-1 rounded-full text-xs font-medium ${stageColors[w.memoryStage]}`}>
-                        {stageLabels[w.memoryStage]}
-                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageColors[w.memoryStage]}`}>
+                          {stageLabels[w.memoryStage]}
+                        </span>
+                        <button
+                          onClick={() => toggleArchive(w.id, true)}
+                          className="p-1.5 text-slate-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50"
+                          title="Archive (stop reviewing)"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -142,37 +167,81 @@ export default function WordHistory() {
       )}
 
       {/* All words stats */}
-      {words.length > 0 && (
+      {activeWords.length > 0 && (
         <div className="mt-8 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Overall Statistics</h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-slate-800">{words.length}</div>
-              <div className="text-sm text-slate-500">Total Words</div>
+              <div className="text-2xl font-bold text-slate-800">{activeWords.length}</div>
+              <div className="text-sm text-slate-500">Active Words</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-emerald-600">
-                {words.filter((w) => w.memoryStage >= 4).length}
+                {activeWords.filter((w) => w.memoryStage >= 4).length}
               </div>
               <div className="text-sm text-slate-500">Mastered</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-indigo-600">
-                {words.filter((w) => w.nextReviewDate <= new Date().toISOString().split('T')[0]).length}
+                {activeWords.filter((w) => !w.archived && w.nextReviewDate <= new Date().toISOString().split('T')[0]).length}
               </div>
               <div className="text-sm text-slate-500">Due Today</div>
             </div>
           </div>
 
-          {/* Export all button */}
           <div className="mt-4 pt-4 border-t border-slate-100 text-center">
             <button
-              onClick={() => exportToCSV(words)}
+              onClick={() => exportToCSV(activeWords)}
               className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
             >
-              Export all {words.length} words as CSV
+              Export all {activeWords.length} words as CSV
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Archived words section */}
+      {archivedWords.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className="flex items-center gap-2 text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${showArchived ? 'rotate-90' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+            Archived ({archivedWords.length})
+          </button>
+
+          {showArchived && (
+            <div className="space-y-2">
+              {archivedWords.map((w) => (
+                <div
+                  key={w.id}
+                  className="bg-slate-50 rounded-xl border border-slate-100 p-4 opacity-70"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg font-semibold text-slate-500">{w.word}</span>
+                        <span className="text-sm text-slate-400 font-mono">{w.phonetic}</span>
+                      </div>
+                      <p className="text-sm text-slate-400 truncate">{w.definitions[0]}</p>
+                    </div>
+                    <button
+                      onClick={() => toggleArchive(w.id, false)}
+                      className="flex-shrink-0 ml-3 px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

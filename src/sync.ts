@@ -27,6 +27,11 @@ function mergeServerWords(localWords: Word[], serverWords: Word[]): Word[] {
     if (!local) {
       wordMap.set(key, sw);
     } else {
+      // For archived: use the version from the more recently updated side
+      const archived = (local.updatedAt || '') > (sw.updatedAt || '')
+        ? local.archived
+        : sw.archived;
+
       wordMap.set(key, {
         ...local,
         id: local.id,
@@ -39,6 +44,7 @@ function mergeServerWords(localWords: Word[], serverWords: Word[]): Word[] {
         phonetic: local.phonetic || sw.phonetic,
         audioUrl: local.audioUrl || sw.audioUrl,
         partOfSpeech: local.partOfSpeech || sw.partOfSpeech,
+        archived,
         updatedAt: sw.updatedAt,
       });
     }

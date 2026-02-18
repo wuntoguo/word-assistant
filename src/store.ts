@@ -34,11 +34,11 @@ export const wordsAtom = atom(
   }
 );
 
-// All words due for review (no limit)
+// All words due for review (no limit), excluding archived
 export const allDueReviewWordsAtom = atom((get) => {
   const words = get(wordsAtom);
   const today = new Date().toISOString().split('T')[0];
-  return words.filter((w) => w.nextReviewDate <= today);
+  return words.filter((w) => !w.archived && w.nextReviewDate <= today);
 });
 
 // Daily review batch: max 5 words, prioritized by urgency

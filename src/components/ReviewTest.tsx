@@ -62,6 +62,17 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
     }
   };
 
+  const archiveWord = (wordId: string) => {
+    setAllWords((prev) =>
+      prev.map((w) =>
+        w.id === wordId
+          ? { ...w, archived: true, updatedAt: new Date().toISOString() }
+          : w
+      )
+    );
+    onReviewComplete?.();
+  };
+
   const playAudio = async () => {
     if (!currentWord?.audioUrl || audioPlaying) return;
     setAudioPlaying(true);
@@ -224,7 +235,23 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
               {shuffledWords
                 .filter((w) => w.id === expandedWordId)
                 .map((w) => (
-                  <WordCard key={w.id} word={w} />
+                  <WordCard
+                    key={w.id}
+                    word={w}
+                    footer={
+                      <div className="pt-3 border-t border-slate-100">
+                        <button
+                          onClick={() => { archiveWord(w.id); setExpandedWordId(null); }}
+                          className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                          </svg>
+                          Skip this word (not useful for me)
+                        </button>
+                      </div>
+                    }
+                  />
                 ))}
             </div>
           )}
@@ -341,6 +368,22 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                   className="flex-1 py-3 bg-emerald-50 text-emerald-600 rounded-xl font-semibold hover:bg-emerald-100 transition-colors border border-emerald-200"
                 >
                   I Remember!
+                </button>
+              </div>
+              <div className="pt-2 text-center">
+                <button
+                  onClick={() => {
+                    archiveWord(currentWord.id);
+                    if (currentIndex + 1 >= shuffledWords.length) {
+                      setIsFinished(true);
+                    } else {
+                      setCurrentIndex((prev) => prev + 1);
+                      setShowAnswer(false);
+                    }
+                  }}
+                  className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+                >
+                  Skip forever (not useful for me)
                 </button>
               </div>
             </div>
