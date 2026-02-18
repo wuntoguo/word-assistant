@@ -1,7 +1,8 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { wordsAtom, todayReviewWordsAtom, allDueReviewWordsAtom } from '../store';
 import { getNextReviewDate } from '../utils';
+import WordCard from './WordCard';
 
 interface ReviewTestProps {
   onReviewComplete?: () => void;
@@ -19,7 +20,8 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [results, setResults] = useState<{ wordId: string; remembered: boolean }[]>([]);
   const [isFinished, setIsFinished] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [expandedWordId, setExpandedWordId] = useState<string | null>(null);
+  const [audioPlaying, setAudioPlaying] = useState(false);
 
   const shuffledWords = useMemo(() => {
     return [...todayBatch].sort(() => Math.random() - 0.5);
@@ -60,8 +62,17 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
     }
   };
 
-  const playAudio = () => {
-    audioRef.current?.play();
+  const playAudio = async () => {
+    if (!currentWord?.audioUrl || audioPlaying) return;
+    setAudioPlaying(true);
+    try {
+      const audio = new Audio(currentWord.audioUrl);
+      audio.onended = () => setAudioPlaying(false);
+      audio.onerror = () => setAudioPlaying(false);
+      await audio.play();
+    } catch {
+      setAudioPlaying(false);
+    }
   };
 
   const resetReview = () => {
@@ -190,17 +201,33 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
             )}
           </div>
 
-          {/* Preview the words */}
+          {/* Preview the words - clickable to expand details */}
           <div className="flex flex-wrap justify-center gap-2 mb-6">
             {shuffledWords.map((w) => (
-              <span
+              <button
                 key={w.id}
-                className="px-3 py-1 bg-slate-100 rounded-full text-sm text-slate-600"
+                onClick={() => setExpandedWordId(expandedWordId === w.id ? null : w.id)}
+                className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                  expandedWordId === w.id
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700'
+                }`}
               >
                 {w.word}
-              </span>
+              </button>
             ))}
           </div>
+
+          {/* Expanded word detail */}
+          {expandedWordId && (
+            <div className="mb-6 text-left">
+              {shuffledWords
+                .filter((w) => w.id === expandedWordId)
+                .map((w) => (
+                  <WordCard key={w.id} word={w} />
+                ))}
+            </div>
+          )}
 
           <button
             onClick={() => setStarted(true)}
@@ -243,17 +270,19 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
             <div className="mt-2">
               <p className="text-indigo-100 text-lg font-mono">{currentWord.phonetic}</p>
               {currentWord.audioUrl && (
-                <>
-                  <audio ref={audioRef} src={currentWord.audioUrl} />
-                  <button
-                    onClick={playAudio}
-                    className="mt-2 w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 inline-flex items-center justify-center transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </button>
-                </>
+                <button
+                  onClick={playAudio}
+                  className={`mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-full transition-colors ${
+                    audioPlaying
+                      ? 'bg-white/40 animate-pulse'
+                      : 'bg-white/20 hover:bg-white/30'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                  </svg>
+                  <span className="text-sm font-medium">{audioPlaying ? 'Playing...' : 'Play'}</span>
+                </button>
               )}
             </div>
           )}

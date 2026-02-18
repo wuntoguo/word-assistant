@@ -1,6 +1,42 @@
+import { useState } from 'react';
+import { useSetAtom } from 'jotai';
+import { useNavigate } from 'react-router-dom';
+import { tokenWriteAtom } from '../store';
+import { registerWithEmail, loginWithEmail } from '../api';
+
 const API_BASE = '/api';
 
 export default function LoginPage() {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const setToken = useSetAtom(tokenWriteAtom);
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      let result: { token: string };
+      if (mode === 'register') {
+        result = await registerWithEmail(name || email.split('@')[0], email, password);
+      } else {
+        result = await loginWithEmail(email, password);
+      }
+      setToken(result.token);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto text-center">
       <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-8">
@@ -10,8 +46,89 @@ export default function LoginPage() {
           Sign in to sync your vocabulary across devices
         </p>
 
+        {/* Email + Password form */}
+        <form onSubmit={handleSubmit} className="space-y-3 mb-6">
+          {mode === 'register' && (
+            <input
+              type="text"
+              placeholder="Name (optional)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-sm"
+            />
+          )}
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-sm"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={4}
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent text-sm"
+          />
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {loading
+              ? 'Please wait...'
+              : mode === 'register'
+                ? 'Create Account'
+                : 'Sign In'}
+          </button>
+
+          <p className="text-sm text-slate-500">
+            {mode === 'login' ? (
+              <>
+                No account?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setError(''); }}
+                  className="text-indigo-600 font-medium hover:underline"
+                >
+                  Register
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setMode('login'); setError(''); }}
+                  className="text-indigo-600 font-medium hover:underline"
+                >
+                  Sign In
+                </button>
+              </>
+            )}
+          </p>
+        </form>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex-1 h-px bg-slate-200" />
+          <span className="text-xs text-slate-400">OR</span>
+          <div className="flex-1 h-px bg-slate-200" />
+        </div>
+
+        {/* OAuth buttons */}
         <div className="space-y-3">
-          {/* Google login */}
           <a
             href={`${API_BASE}/auth/google`}
             className="flex items-center justify-center gap-3 w-full py-3 px-4 bg-white border border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 transition-colors"
@@ -25,7 +142,6 @@ export default function LoginPage() {
             Continue with Google
           </a>
 
-          {/* GitHub login */}
           <a
             href={`${API_BASE}/auth/github`}
             className="flex items-center justify-center gap-3 w-full py-3 px-4 bg-slate-800 rounded-xl text-white font-medium hover:bg-slate-900 transition-colors"

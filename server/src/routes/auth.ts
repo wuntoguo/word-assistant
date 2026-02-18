@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { findUserByProvider, createUser, findUserById } from '../db.js';
+import { findUserByProvider, createUser, findUserById, findUserByEmail } from '../db.js';
 
 export const authRouter = Router();
 
@@ -93,6 +94,7 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
         avatar_url: profile.picture,
         provider: 'google',
         provider_id: profile.id,
+        password_hash: null,
       });
     }
 
@@ -184,6 +186,7 @@ authRouter.get('/github/callback', async (req: Request, res: Response) => {
         avatar_url: profile.avatar_url,
         provider: 'github',
         provider_id: profile.id.toString(),
+        password_hash: null,
       });
     }
 
@@ -192,6 +195,87 @@ authRouter.get('/github/callback', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('GitHub OAuth error:', err);
     res.status(500).json({ error: 'GitHub OAuth failed' });
+  }
+});
+
+// ==================== Email + Password Auth ====================
+
+authRouter.post('/register', async (req: Request, res: Response) => {
+  const { name, email, password } = req.body as {
+    name?: string;
+    email?: string;
+    password?: string;
+  };
+
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email and password are required' });
+    return;
+  }
+
+  if (password.length < 4) {
+    res.status(400).json({ error: 'Password must be at least 4 characters' });
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const existing = findUserByEmail(normalizedEmail);
+  if (existing) {
+    res.status(409).json({ error: 'This email is already registered. Please sign in.' });
+    return;
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = createUser({
+      id: uuidv4(),
+      email: normalizedEmail,
+      name: name?.trim() || normalizedEmail.split('@')[0],
+      avatar_url: null,
+      provider: 'email',
+      provider_id: normalizedEmail,
+      password_hash: passwordHash,
+    });
+
+    const token = issueToken(user.id);
+    res.json({ token });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+authRouter.post('/login', async (req: Request, res: Response) => {
+  const { email, password } = req.body as {
+    email?: string;
+    password?: string;
+  };
+
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email and password are required' });
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = findUserByEmail(normalizedEmail);
+
+  if (!user || !user.password_hash) {
+    res.status(401).json({ error: 'Invalid email or password' });
+    return;
+  }
+
+  try {
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      res.status(401).json({ error: 'Invalid email or password' });
+      return;
+    }
+
+    const token = issueToken(user.id);
+    res.json({ token });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed' });
   }
 });
 

@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Word Assistant - Quick Lookup",
+  "version": "1.0.0",
+  "description": "Right-click any word to look it up in Word Assistant",
+  "permissions": ["contextMenus"],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

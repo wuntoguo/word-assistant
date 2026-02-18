@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAtom } from 'jotai';
+import { useSearchParams } from 'react-router-dom';
 import { wordsAtom } from '../store';
 import { Word } from '../types';
 import { lookupWord, getTodayString, getNextReviewDate } from '../utils';
+import WordCard from './WordCard';
 
 interface WordLookupProps {
   onWordAdded?: () => void;
@@ -15,12 +17,14 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
   const [error, setError] = useState('');
   const [result, setResult] = useState<Word | null>(null);
   const [saved, setSaved] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoSearchDone = useRef(false);
 
-  const handleSearch = async () => {
-    const term = searchTerm.trim();
+  const handleSearch = useCallback(async (termOverride?: string) => {
+    const term = (termOverride || searchTerm).trim();
     if (!term) return;
 
+    setSearchTerm(term);
     setLoading(true);
     setError('');
     setResult(null);
@@ -56,17 +60,22 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchTerm, words, setWords, onWordAdded]);
+
+  // Auto-search from URL parameter: /#/?word=something
+  useEffect(() => {
+    const wordParam = searchParams.get('word');
+    if (wordParam && !autoSearchDone.current) {
+      autoSearchDone.current = true;
+      setSearchParams({}, { replace: true });
+      handleSearch(wordParam);
+    }
+  }, [searchParams, setSearchParams, handleSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSearch();
   };
 
-  const playAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.play();
-    }
-  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -87,7 +96,7 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
           autoFocus
         />
         <button
-          onClick={handleSearch}
+          onClick={() => handleSearch()}
           disabled={loading || !searchTerm.trim()}
           className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
@@ -114,77 +123,9 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
 
       {/* Result Card */}
       {result && (
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden">
-          {/* Header */}
-          <div className="p-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold">{result.word}</h2>
-                <p className="text-indigo-100 mt-1 text-lg font-mono">{result.phonetic || 'No phonetic available'}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {result.audioUrl && (
-                  <>
-                    <audio ref={audioRef} src={result.audioUrl} />
-                    {result.audioAccent && (
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        result.audioAccent === 'US' ? 'bg-white/30' : 'bg-amber-400/80 text-amber-900'
-                      }`}>
-                        {result.audioAccent}
-                      </span>
-                    )}
-                    <button
-                      onClick={playAudio}
-                      className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                      title={`Play pronunciation${result.audioAccent ? ` (${result.audioAccent})` : ''}`}
-                    >
-                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-            {result.partOfSpeech && (
-              <span className="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-sm">
-                {result.partOfSpeech}
-              </span>
-            )}
-          </div>
-
-          {/* Body */}
-          <div className="p-6 space-y-5">
-            {/* Definitions */}
-            <div>
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Definitions</h3>
-              <ol className="space-y-2">
-                {result.definitions.map((def, i) => (
-                  <li key={i} className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold">
-                      {i + 1}
-                    </span>
-                    <span className="text-slate-700 leading-relaxed">{def}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-
-            {/* Examples */}
-            {result.examples.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Example Sentences</h3>
-                <div className="space-y-2">
-                  {result.examples.map((ex, i) => (
-                    <div key={i} className="pl-4 border-l-3 border-indigo-300 text-slate-600 italic leading-relaxed">
-                      "{ex}"
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Save status */}
+        <WordCard
+          word={result}
+          footer={
             <div className="pt-3 border-t border-slate-100">
               {saved ? (
                 <div className="flex items-center gap-2 text-emerald-600">
@@ -197,8 +138,8 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
                 <p className="text-sm text-slate-400">This word is already in your list.</p>
               )}
             </div>
-          </div>
-        </div>
+          }
+        />
       )}
 
       {/* Recent lookups */}

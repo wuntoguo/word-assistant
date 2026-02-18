@@ -20,6 +20,7 @@ db.exec(`
     avatar_url TEXT,
     provider TEXT NOT NULL,
     provider_id TEXT NOT NULL,
+    password_hash TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     UNIQUE(provider, provider_id)
   );
@@ -45,6 +46,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_words_updated_at ON words(user_id, updated_at);
 `);
 
+// Migrate: add password_hash column if it doesn't exist
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`);
+} catch {
+  // Column already exists
+}
+
 // --- User queries ---
 
 export interface DbUser {
@@ -54,6 +62,7 @@ export interface DbUser {
   avatar_url: string | null;
   provider: string;
   provider_id: string;
+  password_hash: string | null;
   created_at: string;
 }
 
@@ -65,13 +74,23 @@ export function findUserByProvider(provider: string, providerId: string): DbUser
 
 export function createUser(user: Omit<DbUser, 'created_at'>): DbUser {
   db.prepare(
-    'INSERT INTO users (id, email, name, avatar_url, provider, provider_id) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(user.id, user.email, user.name, user.avatar_url, user.provider, user.provider_id);
+    'INSERT INTO users (id, email, name, avatar_url, provider, provider_id, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(user.id, user.email, user.name, user.avatar_url, user.provider, user.provider_id, user.password_hash || null);
   return findUserByProvider(user.provider, user.provider_id)!;
 }
 
 export function findUserById(id: string): DbUser | undefined {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as DbUser | undefined;
+}
+
+export function findUserByEmail(email: string): DbUser | undefined {
+  return db.prepare(
+    "SELECT * FROM users WHERE provider = 'email' AND provider_id = ?"
+  ).get(email.toLowerCase()) as DbUser | undefined;
+}
+
+export function updateUserPassword(userId: string, passwordHash: string): void {
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
 }
 
 // --- Word queries ---

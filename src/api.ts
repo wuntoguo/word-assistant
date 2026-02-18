@@ -35,6 +35,27 @@ export async function fetchCurrentUser(): Promise<User> {
   return apiFetch<User>('/auth/me');
 }
 
+export async function registerWithEmail(
+  name: string,
+  email: string,
+  password: string
+): Promise<{ token: string }> {
+  return apiFetch<{ token: string }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export async function loginWithEmail(
+  email: string,
+  password: string
+): Promise<{ token: string }> {
+  return apiFetch<{ token: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
 // --- Sync ---
 
 export interface SyncResponse {
