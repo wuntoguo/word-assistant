@@ -141,8 +141,21 @@ export async function lookupWord(term: string): Promise<Omit<Word, 'id' | 'dateA
         const prefix = entry.meanings.length > 1 ? `(${meaning.partOfSpeech}) ` : '';
         allDefinitions.push(prefix + def.definition);
       }
-      if (def.example && allExamples.length < 2) {
+      if (def.example && allExamples.length < 4) {
         allExamples.push(def.example);
+      }
+    }
+  }
+
+  // If fewer than 2 examples, try to get more from secondary entries
+  if (allExamples.length < 2 && data.length > 1) {
+    for (let i = 1; i < data.length && allExamples.length < 4; i++) {
+      for (const meaning of data[i].meanings) {
+        for (const def of meaning.definitions) {
+          if (def.example && allExamples.length < 4 && !allExamples.includes(def.example)) {
+            allExamples.push(def.example);
+          }
+        }
       }
     }
   }

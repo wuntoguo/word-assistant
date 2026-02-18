@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Word } from '../types';
 import PhonemeBreakdown from './PhonemeBreakdown';
+import WordImage from './WordImage';
 
 interface WordCardProps {
   word: Word;
@@ -113,6 +114,9 @@ export default function WordCard({ word, footer }: WordCardProps) {
             </div>
           </div>
         )}
+
+        {/* Word image from Wikipedia */}
+        <WordImage word={word.word} />
 
         {/* Optional footer slot */}
         {footer}

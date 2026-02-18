@@ -3,6 +3,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import { wordsAtom, todayReviewWordsAtom, allDueReviewWordsAtom } from '../store';
 import { getNextReviewDate } from '../utils';
 import WordCard from './WordCard';
+import PhonemeBreakdown from './PhonemeBreakdown';
 
 interface ReviewTestProps {
   onReviewComplete?: () => void;
@@ -311,6 +312,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                   <span className="text-sm font-medium">{audioPlaying ? 'Playing...' : 'Play'}</span>
                 </button>
               )}
+              {currentWord.phonetic && <PhonemeBreakdown phonetic={currentWord.phonetic} />}
             </div>
           )}
         </div>
