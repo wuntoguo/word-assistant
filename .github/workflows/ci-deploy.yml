@@ -45,8 +45,8 @@ jobs:
             echo "::error::FLY_API_TOKEN not set. Add it in Repo Settings → Secrets."
             exit 1
           fi
-          # 去掉粘贴时带入的换行和首尾空格
-          SANITIZED=$(printf '%s' "${{ secrets.FLY_API_TOKEN }}" | tr -d '\n\r' | xargs)
+          # 去掉粘贴时带入的换行（保留空格，xargs 可能破坏 token）
+          SANITIZED=$(printf '%s' "${{ secrets.FLY_API_TOKEN }}" | tr -d '\n\r')
           echo "FLY_API_TOKEN=$SANITIZED" >> $GITHUB_ENV
 
       - name: Setup flyctl
