@@ -100,15 +100,27 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const articlesByDay = getArticleCountByDay(14);
   const todayRow = articlesByDay.find((r) => r.date === today);
   const reports = getCrawlReports(14);
   const totalArticles = getArticleCount();
   const vocabCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE is_vocab_story = 1').get() as { c: number };
   const crawlCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE COALESCE(is_vocab_story,0)=0').get() as { c: number };
+  const reportsMapped = reports.slice(0, 7).map((r) => ({
+    date: r.report_date,
+    ingested: r.ingested,
+    skipped: r.skipped,
+    errors: r.errors,
+    durationMs: r.duration_ms,
+    isToday: r.report_date === today,
+  }));
   res.json({
     today,
+    serverTime: now.toISOString(),
+    timezone: tz,
     articles: {
       total: totalArticles,
       crawled: crawlCount?.c ?? 0,
@@ -116,12 +128,7 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
       createdToday: todayRow?.count ?? 0,
     },
     articlesByDay: articlesByDay.slice(0, 7),
-    crawlReports: reports.slice(0, 7).map((r) => ({
-      date: r.report_date,
-      ingested: r.ingested,
-      skipped: r.skipped,
-      errors: r.errors,
-      durationMs: r.duration_ms,
-    })),
+    crawlReports: reportsMapped,
+    crawlToday: reportsMapped.filter((r) => r.isToday),
   });
 });
