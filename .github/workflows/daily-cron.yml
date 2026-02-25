@@ -12,10 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger daily pipeline (async - 立即返回，后台执行约 5–10 分钟)
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          # -f 会在 4xx/5xx 时失败但不显示 body，改用 -s -w 单独获取
+          # 去掉可能的换行（粘贴时带入）
+          CRON_SECRET=$(printf '%s' "$CRON_SECRET" | tr -d '\n\r')
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET not set. Add it in Repo Settings → Secrets (must match Fly.io)."
+            exit 1
+          fi
           resp=$(curl -s -w "\n%{http_code}" -X POST "https://feedlingo.fly.dev/api/cron/daily?async=1" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json") || true
           code=$(echo "$resp" | tail -n1)
           body=$(echo "$resp" | sed '$d')
