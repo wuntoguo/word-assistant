@@ -43,7 +43,7 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
 
   try {
     const { articles, profile, hasMore } = await getRecommendedArticles(userId, limit, showDebug, offset);
-    const showCounts = showDebug ? getArticleShowCounts(userId) : new Map<string, number>();
+    const showCounts = getArticleShowCounts(userId);
 
     let payload = articles.map((s) => {
       const freshness = computeFreshnessScore(s.article);
@@ -52,6 +52,7 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
       const adjustedTotal = withFreshness * demotionFactor(cnt);
       return {
         id: s.article.id,
+        _adjustedTotal: adjustedTotal,
         title: s.article.title,
         link: s.article.source_url,
         pubDate: s.article.pub_date,
@@ -106,15 +107,13 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
           }
         })(),
         difficulty: a.difficulty_simplified || a.difficulty_original,
+        _adjustedTotal: 96,
         scores: showDebug ? { interestScore: 90, difficultyScore: 100, totalScore: 96, interestReason: 'Personalized from your vocabulary', difficultyReason: 'Matches your level', freshnessScore: 100, showCount: 0, adjustedTotal: 96 } : undefined,
         recommendationReason: buildRecommendationReason(90, 100, 96, 'Personalized from your vocabulary', 'Matches your level'),
         isVocabStory: true,
       }));
-      const insertPositions = [2, 6];
-      for (let i = 0; i < vocabPayload.length && i < insertPositions.length; i++) {
-        const pos = Math.min(insertPositions[i], payload.length);
-        payload = [...payload.slice(0, pos), vocabPayload[i], ...payload.slice(pos)];
-      }
+      const combined = [...payload, ...vocabPayload];
+      payload = combined.sort((a, b) => (b._adjustedTotal ?? 0) - (a._adjustedTotal ?? 0));
     }
 
     recordShownArticles(
@@ -122,8 +121,10 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
       payload.map((p) => p.link)
     );
 
+    const cleanPayload = payload.map(({ _adjustedTotal, ...p }) => p);
+
     res.json({
-      articles: payload,
+      articles: cleanPayload,
       hasMore: hasMore ?? false,
       profile: showDebug
         ? {

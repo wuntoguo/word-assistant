@@ -37,9 +37,9 @@ export function computeFreshnessScore(article: DbArticle): number {
   return Math.max(0, Math.min(100, Math.round(100 - daysOld * 7)));
 }
 
-/** Apply freshness to base score: fresh articles keep full score, old get penalized up to 25%. */
+/** Apply freshness to base score: fresh articles keep full score, old get penalized up to 50%. */
 function scoreWithFreshness(baseScore: number, freshnessScore: number): number {
-  const multiplier = 0.75 + 0.25 * (freshnessScore / 100);
+  const multiplier = 0.5 + 0.5 * (freshnessScore / 100);
   return baseScore * multiplier;
 }
 
@@ -348,11 +348,16 @@ export async function getRecommendedArticles(
 
   if (fromCache.length > 0) {
     const sourceKey = (a: ScoredArticle) => a.article.parent_id || a.article.id;
+    const adjustedScore = (s: ScoredArticle) => {
+      const fresh = computeFreshnessScore(s.article);
+      const base = scoreWithFreshness(s.totalScore, fresh);
+      return base * demotionFactor(showCounts.get(s.article.source_url) ?? 0);
+    };
     const bySource = new Map<string, ScoredArticle>();
     for (const s of fromCache) {
       const key = sourceKey(s);
       const existing = bySource.get(key);
-      if (!existing || s.difficultyScore > existing.difficultyScore) {
+      if (!existing || adjustedScore(s) > adjustedScore(existing)) {
         bySource.set(key, s);
       }
     }
@@ -455,11 +460,16 @@ export async function getRecommendedArticles(
   });
 
   const sourceKey = (a: ScoredArticle) => a.article.parent_id || a.article.id;
+  const adjustedScore = (s: ScoredArticle) => {
+    const fresh = computeFreshnessScore(s.article);
+    const base = scoreWithFreshness(s.totalScore, fresh);
+    return base * demotionFactor(showCounts.get(s.article.source_url) ?? 0);
+  };
   const bySource = new Map<string, ScoredArticle>();
   for (const s of scored) {
     const key = sourceKey(s);
     const existing = bySource.get(key);
-    if (!existing || s.difficultyScore > existing.difficultyScore) {
+    if (!existing || adjustedScore(s) > adjustedScore(existing)) {
       bySource.set(key, s);
     }
   }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAtomValue } from 'jotai';
-import { recordActivity } from '../store';
-import { getTodayString } from '../utils';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { recordActivity, levelWriteAtom } from '../store';
+import { getTodayString, formatArticleDate } from '../utils';
 import { tokenAtom } from '../store';
+import { submitArticleFeedback } from '../api';
 
 interface AudioItem {
   id?: string;
@@ -44,27 +45,20 @@ function formatTextWithParagraphs(text: string): React.ReactNode {
   );
 }
 
-function formatDate(pubDate: string): string {
-  try {
-    const d = new Date(pubDate);
-    return d.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return pubDate;
-  }
+
+function articleKey(item: { link?: string; title?: string }): string {
+  return item.link || item.title || '';
 }
 
 export default function AudioChannel() {
   const token = useAtomValue(tokenAtom);
+  const setLevel = useSetAtom(levelWriteAtom);
   const [items, setItems] = useState<AudioItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Record<string, { liked?: boolean; hard?: boolean }>>({});
+  const [feedback, setFeedback] = useState<Record<string, { liked?: boolean; difficulty?: 'appropriate' | 'too_hard' | 'too_easy' }>>({});
   const [audioError, setAudioError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -108,11 +102,18 @@ export default function AudioChannel() {
     return () => { cancelled = true; };
   }, [token]);
 
-  const handleFeedback = (id: string, key: 'liked' | 'hard', value: boolean) => {
-    setFeedback((prev) => ({
-      ...prev,
-      [id]: { ...prev[id], [key]: value },
-    }));
+  const handleFeedback = (item: AudioItem, key: 'liked' | 'difficulty', value: boolean | 'appropriate' | 'too_hard' | 'too_easy') => {
+    const id = item.id || item.link || '';
+    setFeedback((prev) => {
+      const merged = key === 'liked'
+        ? { ...prev[id], liked: value as boolean }
+        : { ...prev[id], difficulty: value as 'appropriate' | 'too_hard' | 'too_easy' };
+      const full = { ...prev[id], ...merged };
+      submitArticleFeedback(articleKey(item), full.liked, full.difficulty, item.id).then((res) => {
+        if (res) setLevel({ levelScore: res.levelScore, band: res.band, label: res.label, testCount: res.testCount, feedbackCount: res.feedbackCount });
+      });
+      return { ...prev, [id]: merged };
+    });
   };
 
   if (loading) {
@@ -168,7 +169,7 @@ export default function AudioChannel() {
                     {item.source && (
                       <span className="px-2 py-1 bg-slate-100 rounded-full">{item.source}</span>
                     )}
-                    <span>{formatDate(item.pubDate)}</span>
+                    <span>{formatArticleDate(item.pubDate)}</span>
                     {typeof item.durationSeconds === 'number' && item.durationSeconds > 0 && (
                       <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-full">
                         {formatDuration(item.durationSeconds)}
@@ -272,8 +273,8 @@ export default function AudioChannel() {
                     </div>
                   )}
 
-                  {/* Actions */}
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {/* Feedback: Like / Dislike / Difficulty - same as Discovery */}
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-3 items-center">
                     {item.link?.startsWith('http') && (
                       <a
                         href={item.link}
@@ -287,22 +288,45 @@ export default function AudioChannel() {
                         </svg>
                       </a>
                     )}
-                    <div className="flex gap-2 ml-auto">
-                      <button
-                        type="button"
-                        onClick={() => handleFeedback(id, 'liked', fb?.liked !== true)}
-                        className={`px-3 py-1.5 rounded-lg text-sm ${fb?.liked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                      >
-                        {fb?.liked ? '✓ Like' : 'Like'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleFeedback(id, 'hard', fb?.hard !== true)}
-                        className={`px-3 py-1.5 rounded-lg text-sm ${fb?.hard ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                      >
-                        {fb?.hard ? '✓ Too hard' : 'Too hard'}
-                      </button>
-                    </div>
+                    <span className="text-slate-300 hidden sm:inline">|</span>
+                    <span className="text-sm text-slate-500">Feedback:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleFeedback(item, 'liked', true)}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium ${fb?.liked === true ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {fb?.liked === true ? '✓ Like' : 'Like'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleFeedback(item, 'liked', false)}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium ${fb?.liked === false ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      Dislike
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <span className="text-sm text-slate-500">Difficulty:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleFeedback(item, 'difficulty', 'appropriate')}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium ${fb?.difficulty === 'appropriate' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {fb?.difficulty === 'appropriate' ? '✓ Just right' : 'Just right'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleFeedback(item, 'difficulty', 'too_hard')}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium ${fb?.difficulty === 'too_hard' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {fb?.difficulty === 'too_hard' ? '✓ Too hard' : 'Too hard'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleFeedback(item, 'difficulty', 'too_easy')}
+                      className={`px-3 py-1.5 rounded-xl text-sm font-medium ${fb?.difficulty === 'too_easy' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {fb?.difficulty === 'too_easy' ? '✓ Too easy' : 'Too easy'}
+                    </button>
                   </div>
                 </div>
               </div>

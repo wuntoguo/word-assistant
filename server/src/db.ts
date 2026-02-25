@@ -653,7 +653,7 @@ export function getArticlesForRecommendation(limit = 50, sinceDays = 7): DbArtic
     SELECT * FROM articles
     WHERE (pub_date >= ? OR created_at >= ?)
       AND COALESCE(is_vocab_story, 0) = 0
-    ORDER BY pub_date IS NULL, pub_date DESC, created_at DESC
+    ORDER BY created_at DESC, pub_date DESC
     LIMIT ?
   `).all(sinceStr, sinceStr, limit) as DbArticle[];
 }

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAtom } from 'jotai';
 import { useNavigate } from 'react-router-dom';
 import { wordsAtom } from '../store';
-import { getWeekRange, getWordsInDateRange, exportToCSV } from '../utils';
+import { getWeekRange, getWordsInDateRange, exportToCSV, formatArticleDate } from '../utils';
 
 export default function WordHistory() {
   const [words, setWords] = useAtom(wordsAtom);
@@ -49,14 +49,6 @@ export default function WordHistory() {
     'bg-emerald-100 text-emerald-600',
   ];
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -121,7 +113,7 @@ export default function WordHistory() {
           {groupedByDate.map(([date, dateWords]) => (
             <div key={date}>
               <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <span>{formatDate(date)}</span>
+                <span>{formatArticleDate(date)}</span>
                 <span className="text-xs font-normal bg-slate-100 px-2 py-0.5 rounded-full">
                   {dateWords.length} word{dateWords.length !== 1 ? 's' : ''}
                 </span>

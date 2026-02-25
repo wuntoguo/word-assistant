@@ -278,3 +278,16 @@ export async function lookupWord(term: string): Promise<Omit<Word, 'id' | 'dateA
     examples,
   };
 }
+
+/** Safe article date formatter. Returns "—" for invalid/unparseable dates. */
+export function formatArticleDate(pubDate: string | null | undefined, options?: { withTime?: boolean }): string {
+  if (!pubDate || typeof pubDate !== 'string') return '—';
+  const d = new Date(pubDate);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(options?.withTime && { hour: '2-digit', minute: '2-digit' }),
+  });
+}

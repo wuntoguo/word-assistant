@@ -60,10 +60,11 @@ cronRouter.post('/daily', async (req, res) => {
   if (async) {
     res.status(202).json({ ok: true, message: 'Daily pipeline started in background' });
     runDailyPipeline()
-      .then(({ crawl, embeddingRefresh, precompute }) => {
+      .then(({ crawl, embeddingRefresh, vocabStory, precompute }) => {
         console.log('[Cron] Daily (async) done:', {
           crawl: crawl.ok ? 'ok' : crawl.error,
           embedding: embeddingRefresh?.ok ? 'ok' : embeddingRefresh?.error,
+          vocabStory: vocabStory?.ok ? 'ok' : vocabStory?.error,
           precompute: precompute?.ok ? 'ok' : precompute?.error,
         });
       })
@@ -72,11 +73,12 @@ cronRouter.post('/daily', async (req, res) => {
   }
 
   try {
-    const { crawl, embeddingRefresh, precompute } = await runDailyPipeline();
+    const { crawl, embeddingRefresh, vocabStory, precompute } = await runDailyPipeline();
     res.json({
       ok: true,
       crawl: crawl.ok ? crawl.data : { error: crawl.error },
       embeddingRefresh: embeddingRefresh?.ok ? embeddingRefresh.data : embeddingRefresh?.error,
+      vocabStory: vocabStory?.ok ? vocabStory.data : vocabStory?.error,
       precompute: precompute?.ok ? precompute.data : precompute?.error,
     });
   } catch (err) {

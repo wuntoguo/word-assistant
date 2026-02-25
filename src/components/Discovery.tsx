@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSetAtom, useAtomValue } from 'jotai';
 import { levelWriteAtom, recordActivity, tokenAtom } from '../store';
-import { getTodayString } from '../utils';
+import { getTodayString, formatArticleDate } from '../utils';
 import { submitArticleFeedback, fetchRecommend } from '../api';
 import type { RecommendArticle } from '../api';
 
@@ -39,20 +39,6 @@ interface ArticleContent {
   siteName?: string;
 }
 
-function formatDate(pubDate: string): string {
-  try {
-    const d = new Date(pubDate);
-    return d.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return pubDate;
-  }
-}
 
 export default function Discovery() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -342,7 +328,7 @@ export default function Discovery() {
                       {article.source && (
                         <span className="px-2 py-1 bg-slate-100 rounded-full">{article.source}</span>
                       )}
-                      <span>{formatDate(article.pubDate)}</span>
+                      <span>{formatArticleDate(article.pubDate, { withTime: true })}</span>
                     </div>
                     <div className="mt-3 text-slate-600 leading-relaxed line-clamp-2">
                       {article.simplified}
@@ -371,6 +357,33 @@ export default function Discovery() {
                         </a>
                       )}
                     </div>
+                  </div>
+                  {/* Feedback: always visible so user can Like/Dislike without expanding */}
+                  <div
+                    className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2 items-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setArticleFeedback(idx, 'liked', true); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${feedback[idx]?.liked === true ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {feedback[idx]?.liked === true ? '✓ Like' : 'Like'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setArticleFeedback(idx, 'liked', false); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${feedback[idx]?.liked === false ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {feedback[idx]?.liked === false ? '✓ Dislike' : 'Dislike'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setArticleFeedback(idx, 'difficulty', 'too_hard'); }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${feedback[idx]?.difficulty === 'too_hard' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    >
+                      {feedback[idx]?.difficulty === 'too_hard' ? '✓ Too hard' : 'Too hard'}
+                    </button>
                   </div>
 
                   {/* Full content (loaded on click) */}
@@ -469,9 +482,9 @@ export default function Discovery() {
                         <button
                           type="button"
                           onClick={() => setArticleFeedback(idx, 'liked', false)}
-                          className={`px-4 py-2 rounded-xl text-sm font-medium ${feedback[idx]?.liked === false ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          className={`px-4 py-2 rounded-xl text-sm font-medium ${feedback[idx]?.liked === false ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                         >
-                          Dislike
+                          {feedback[idx]?.liked === false ? '✓ Dislike' : 'Dislike'}
                         </button>
                         <span className="text-slate-300">|</span>
                         <span className="text-sm text-slate-500">Difficulty:</span>

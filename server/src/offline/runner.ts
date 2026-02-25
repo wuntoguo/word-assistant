@@ -120,12 +120,13 @@ export async function runTaskWithDeps(
 }
 
 /**
- * Run daily pipeline: crawl → user-embedding-refresh → precompute.
- * Order follows registry deps. article-audio runs separately at 2am.
+ * Run daily pipeline: crawl → user-embedding-refresh → vocab-story → precompute.
+ * article-audio runs separately at 2am.
  */
 export async function runDailyPipeline(): Promise<{
   crawl: TaskResult;
   embeddingRefresh?: TaskResult;
+  vocabStory?: TaskResult;
   precompute?: TaskResult;
 }> {
   const crawl = await runTask('daily-crawl');
@@ -134,6 +135,7 @@ export async function runDailyPipeline(): Promise<{
   }
 
   const embeddingRefresh = await runTask('user-embedding-refresh');
+  const vocabStory = await runTask('vocab-story');
 
   const today = new Date().toISOString().split('T')[0];
   const newArticleIds = getArticleIdsCreatedSince(today);
@@ -142,5 +144,5 @@ export async function runDailyPipeline(): Promise<{
     precompute = await runTask('recommend-precompute', { daysBack: 0 });
   }
 
-  return { crawl, embeddingRefresh, precompute };
+  return { crawl, embeddingRefresh, vocabStory, precompute };
 }
