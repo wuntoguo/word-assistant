@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from './auth.js';
-import { getRecommendedArticles, buildUserProfile, buildRecommendationReason, computeFreshnessScore } from '../recommendation.js';
+import { getRecommendedArticles, buildUserProfile, buildRecommendationReason, computeFreshnessScore, scoreWithFreshness } from '../recommendation.js';
 import {
   recordShownArticles,
   getVocabStoriesForRecommend,
@@ -11,9 +11,6 @@ import {
 
 function demotionFactor(showCount: number): number {
   return 1 / (1 + 0.2 * Math.max(0, showCount));
-}
-function scoreWithFreshness(baseScore: number, freshnessScore: number): number {
-  return baseScore * (0.75 + 0.25 * (freshnessScore / 100));
 }
 
 export const recommendRouter = Router();
@@ -48,7 +45,7 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
     let payload = articles.map((s) => {
       const freshness = computeFreshnessScore(s.article);
       const cnt = showCounts.get(s.article.source_url) ?? 0;
-      const withFreshness = scoreWithFreshness(s.totalScore, freshness);
+      const withFreshness = scoreWithFreshness(s.totalScore, freshness, s.article);
       const adjustedTotal = withFreshness * demotionFactor(cnt);
       return {
         id: s.article.id,

@@ -37,10 +37,20 @@ export function computeFreshnessScore(article: DbArticle): number {
   return Math.max(0, Math.min(100, Math.round(100 - daysOld * 7)));
 }
 
-/** Apply freshness to base score: fresh articles keep full score, old get penalized up to 50%. */
-function scoreWithFreshness(baseScore: number, freshnessScore: number): number {
-  const multiplier = 0.5 + 0.5 * (freshnessScore / 100);
-  return baseScore * multiplier;
+/** Apply freshness: newer articles get full score, old penalized up to 80%. Recency bonus for <2 days. */
+export function scoreWithFreshness(baseScore: number, freshnessScore: number, article: DbArticle): number {
+  const multiplier = 0.2 + 0.8 * (freshnessScore / 100); // old articles drop to 0.2x
+  let score = baseScore * multiplier;
+  const dateStr = article.pub_date || article.created_at;
+  if (dateStr) {
+    try {
+      const daysOld = (Date.now() - new Date(dateStr).getTime()) / 864e5;
+      if (daysOld < 2) score *= 1.15; // +15% boost for today/yesterday
+    } catch {
+      //
+    }
+  }
+  return score;
 }
 
 function levelBandToScore(band: string): number {
@@ -350,7 +360,7 @@ export async function getRecommendedArticles(
     const sourceKey = (a: ScoredArticle) => a.article.parent_id || a.article.id;
     const adjustedScore = (s: ScoredArticle) => {
       const fresh = computeFreshnessScore(s.article);
-      const base = scoreWithFreshness(s.totalScore, fresh);
+      const base = scoreWithFreshness(s.totalScore, fresh, s.article);
       return base * demotionFactor(showCounts.get(s.article.source_url) ?? 0);
     };
     const bySource = new Map<string, ScoredArticle>();
@@ -364,8 +374,8 @@ export async function getRecommendedArticles(
     const deduped = [...bySource.values()].sort((a, b) => {
       const freshA = computeFreshnessScore(a.article);
       const freshB = computeFreshnessScore(b.article);
-      const baseA = scoreWithFreshness(a.totalScore, freshA);
-      const baseB = scoreWithFreshness(b.totalScore, freshB);
+      const baseA = scoreWithFreshness(a.totalScore, freshA, a.article);
+      const baseB = scoreWithFreshness(b.totalScore, freshB, b.article);
       const cntA = showCounts.get(a.article.source_url) ?? 0;
       const cntB = showCounts.get(b.article.source_url) ?? 0;
       const scoreA = baseA * demotionFactor(cntA);
@@ -389,9 +399,11 @@ export async function getRecommendedArticles(
       .sort((a, b) => {
         const freshA = computeFreshnessScore(a);
         const freshB = computeFreshnessScore(b);
+        const baseA = scoreWithFreshness(50, freshA, a);
+        const baseB = scoreWithFreshness(50, freshB, b);
         const cntA = showCounts.get(a.source_url) ?? 0;
         const cntB = showCounts.get(b.source_url) ?? 0;
-        return (freshB * demotionFactor(cntB)) - (freshA * demotionFactor(cntA));
+        return baseB * demotionFactor(cntB) - baseA * demotionFactor(cntA);
       });
     const sliced = unfiltered.slice(offset, offset + limit);
     return {
@@ -452,8 +464,8 @@ export async function getRecommendedArticles(
   scored.sort((a, b) => {
     const freshA = computeFreshnessScore(a.article);
     const freshB = computeFreshnessScore(b.article);
-    const baseA = scoreWithFreshness(a.totalScore, freshA);
-    const baseB = scoreWithFreshness(b.totalScore, freshB);
+    const baseA = scoreWithFreshness(a.totalScore, freshA, a.article);
+    const baseB = scoreWithFreshness(b.totalScore, freshB, b.article);
     const cntA = showCounts.get(a.article.source_url) ?? 0;
     const cntB = showCounts.get(b.article.source_url) ?? 0;
     return baseB * demotionFactor(cntB) - baseA * demotionFactor(cntA);
@@ -462,7 +474,7 @@ export async function getRecommendedArticles(
   const sourceKey = (a: ScoredArticle) => a.article.parent_id || a.article.id;
   const adjustedScore = (s: ScoredArticle) => {
     const fresh = computeFreshnessScore(s.article);
-    const base = scoreWithFreshness(s.totalScore, fresh);
+    const base = scoreWithFreshness(s.totalScore, fresh, s.article);
     return base * demotionFactor(showCounts.get(s.article.source_url) ?? 0);
   };
   const bySource = new Map<string, ScoredArticle>();
@@ -477,8 +489,8 @@ export async function getRecommendedArticles(
   const deduped = [...bySource.values()].sort((a, b) => {
     const freshA = computeFreshnessScore(a.article);
     const freshB = computeFreshnessScore(b.article);
-    const baseA = scoreWithFreshness(a.totalScore, freshA);
-    const baseB = scoreWithFreshness(b.totalScore, freshB);
+    const baseA = scoreWithFreshness(a.totalScore, freshA, a.article);
+    const baseB = scoreWithFreshness(b.totalScore, freshB, b.article);
     const cntA = showCounts.get(a.article.source_url) ?? 0;
     const cntB = showCounts.get(b.article.source_url) ?? 0;
     return baseB * demotionFactor(cntB) - baseA * demotionFactor(cntA);
@@ -560,8 +572,8 @@ export function getRecommendedAudioArticles(userId: string | null): ScoredArticl
   scored.sort((a, b) => {
     const freshA = computeFreshnessScore(a.article);
     const freshB = computeFreshnessScore(b.article);
-    const baseA = scoreWithFreshness(a.totalScore, freshA);
-    const baseB = scoreWithFreshness(b.totalScore, freshB);
+    const baseA = scoreWithFreshness(a.totalScore, freshA, a.article);
+    const baseB = scoreWithFreshness(b.totalScore, freshB, b.article);
     const cntA = showCounts.get(a.article.source_url) ?? 0;
     const cntB = showCounts.get(b.article.source_url) ?? 0;
     return baseB * demotionFactor(cntB) - baseA * demotionFactor(cntA);
