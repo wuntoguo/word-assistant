@@ -39,22 +39,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check FLY_API_TOKEN
+      - name: Prepare FLY_API_TOKEN
         run: |
           if [ -z "${{ secrets.FLY_API_TOKEN }}" ]; then
             echo "::error::FLY_API_TOKEN not set. Add it in Repo Settings → Secrets."
             exit 1
           fi
+          # 去掉粘贴时带入的换行和首尾空格
+          SANITIZED=$(printf '%s' "${{ secrets.FLY_API_TOKEN }}" | tr -d '\n\r' | xargs)
+          echo "FLY_API_TOKEN=$SANITIZED" >> $GITHUB_ENV
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Verify Fly auth
         run: flyctl status -a feedlingo
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
       - name: Deploy app
         run: flyctl deploy --remote-only --app feedlingo --verbose
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
