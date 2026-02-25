@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { runTaskWithDeps, runTask, runDailyPipeline } from '../offline/index.js';
+import db, { getCrawlReports, getArticleCountByDay, getArticleCount } from '../db.js';
 
 export const cronRouter = Router();
 
@@ -91,4 +92,36 @@ cronRouter.post('/daily', async (req, res) => {
 cronRouter.post('/generate-vocab-stories', (req, res) => {
   const userId = req.query.userId as string | undefined;
   handleTask(req, res, 'vocab-story', { userId });
+});
+
+// GET /api/cron/stats - 爬取和生成文章数（需 CRON_SECRET）
+cronRouter.get('/stats', (req: Request, res: Response) => {
+  if (!isAuthorized(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const today = new Date().toISOString().split('T')[0];
+  const articlesByDay = getArticleCountByDay(14);
+  const todayRow = articlesByDay.find((r) => r.date === today);
+  const reports = getCrawlReports(14);
+  const totalArticles = getArticleCount();
+  const vocabCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE is_vocab_story = 1').get() as { c: number };
+  const crawlCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE COALESCE(is_vocab_story,0)=0').get() as { c: number };
+  res.json({
+    today,
+    articles: {
+      total: totalArticles,
+      crawled: crawlCount?.c ?? 0,
+      vocabStories: vocabCount?.c ?? 0,
+      createdToday: todayRow?.count ?? 0,
+    },
+    articlesByDay: articlesByDay.slice(0, 7),
+    crawlReports: reports.slice(0, 7).map((r) => ({
+      date: r.report_date,
+      ingested: r.ingested,
+      skipped: r.skipped,
+      errors: r.errors,
+      durationMs: r.duration_ms,
+    })),
+  });
 });
