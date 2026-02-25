@@ -50,6 +50,6 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy app
-        run: flyctl deploy --remote-only --app feedlingo
+        run: flyctl deploy --remote-only --app feedlingo --verbose
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
