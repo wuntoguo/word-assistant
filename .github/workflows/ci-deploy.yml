@@ -53,7 +53,7 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Verify Fly auth
-        run: flyctl status -a feedlingo
+        run: flyctl auth whoami
 
       - name: Deploy app
         run: flyctl deploy --remote-only --app feedlingo --verbose
