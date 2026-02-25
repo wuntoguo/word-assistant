@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { runTaskWithDeps, runTask, runDailyPipeline } from '../offline/index.js';
-import db, { getCrawlReports, getArticleCountByDay, getArticleCount } from '../db.js';
+import db, { getCrawlReports, getArticleCountByDay, getArticleCount, getArticleCountBySourceForDate } from '../db.js';
 
 export const cronRouter = Router();
 
@@ -109,14 +109,37 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
   const totalArticles = getArticleCount();
   const vocabCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE is_vocab_story = 1').get() as { c: number };
   const crawlCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE COALESCE(is_vocab_story,0)=0').get() as { c: number };
-  const reportsMapped = reports.slice(0, 7).map((r) => ({
-    date: r.report_date,
-    ingested: r.ingested,
-    skipped: r.skipped,
-    errors: r.errors,
-    durationMs: r.duration_ms,
-    isToday: r.report_date === today,
-  }));
+  const articlesBySourceToday = getArticleCountBySourceForDate(today);
+  const CATEGORY_SOURCES: Record<string, string[]> = {
+    finance: ['Yahoo Finance', 'CNN Business', 'NPR Business', 'CNBC', 'Reuters'],
+    tech: ['CNN Tech', 'TechCrunch', 'Ars Technica', 'NPR Technology'],
+    lifestyle: ['CNN Health', 'CNN Travel', 'NPR Health'],
+    entertainment: ['CNN Entertainment', 'NPR Arts', 'Variety'],
+    sports: ['ESPN', 'CNN US', 'NPR Sports'],
+  };
+  const byCategoryToday: Record<string, number> = {};
+  for (const [cat, sources] of Object.entries(CATEGORY_SOURCES)) {
+    byCategoryToday[cat] = articlesBySourceToday
+      .filter((r) => sources.includes(r.source_name))
+      .reduce((s, r) => s + r.count, 0);
+  }
+  const reportsMapped = reports.slice(0, 7).map((r) => {
+    let byCategory: Record<string, { ingested: number; skipped: number }> = {};
+    try {
+      byCategory = r.by_category ? (JSON.parse(r.by_category) as Record<string, { ingested: number; skipped: number }>) : {};
+    } catch {
+      //
+    }
+    return {
+      date: r.report_date,
+      ingested: r.ingested,
+      skipped: r.skipped,
+      errors: r.errors,
+      durationMs: r.duration_ms,
+      isToday: r.report_date === today,
+      byCategory,
+    };
+  });
   res.json({
     today,
     serverTime: now.toISOString(),
@@ -128,6 +151,8 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
       createdToday: todayRow?.count ?? 0,
     },
     articlesByDay: articlesByDay.slice(0, 7),
+    articlesBySourceToday,
+    articlesByCategoryToday: byCategoryToday,
     crawlReports: reportsMapped,
     crawlToday: reportsMapped.filter((r) => r.isToday),
   });

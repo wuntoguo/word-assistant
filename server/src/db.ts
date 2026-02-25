@@ -547,6 +547,18 @@ export function getArticleCountBySource(): { source_name: string; count: number 
   return rows;
 }
 
+/** Articles created on a specific date, grouped by source_name. */
+export function getArticleCountBySourceForDate(dateStr: string): { source_name: string; count: number }[] {
+  const rows = db.prepare(`
+    SELECT COALESCE(source_name, '(Unknown)') as source_name, COUNT(*) as count
+    FROM articles
+    WHERE date(created_at) = ? AND COALESCE(is_vocab_story, 0) = 0
+    GROUP BY source_name
+    ORDER BY count DESC
+  `).all(dateStr) as { source_name: string; count: number }[];
+  return rows;
+}
+
 export function getArticleCountByDay(days = 14): { date: string; count: number }[] {
   const since = new Date();
   since.setDate(since.getDate() - days);
