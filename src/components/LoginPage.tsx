@@ -41,7 +41,7 @@ export default function LoginPage() {
     <div className="max-w-md mx-auto text-center">
       <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-8">
         <div className="text-5xl mb-4">&#128214;</div>
-        <h1 className="text-2xl font-bold text-slate-800 mb-2">Word Assistant</h1>
+        <h1 className="text-2xl font-bold text-slate-800 mb-2">FeedLingo</h1>
         <p className="text-slate-500 mb-8">
           Sign in to sync your vocabulary across devices
         </p>

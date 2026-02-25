@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Outlet } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import {
   allDueReviewWordsAtom,
@@ -11,6 +11,9 @@ import WordLookup from './components/WordLookup';
 import ReviewTest from './components/ReviewTest';
 import WordHistory from './components/WordHistory';
 import ProfileStats from './components/ProfileStats';
+import Discovery from './components/Discovery';
+import AudioChannel from './components/AudioChannel';
+import WeeklyTest from './components/WeeklyTest';
 import LoginPage from './components/LoginPage';
 import AuthCallback from './components/AuthCallback';
 
@@ -54,6 +57,57 @@ function SyncStatusIndicator() {
   }
 }
 
+function LearnLayout() {
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="flex gap-2 mb-6 border-b border-slate-200 pb-2 overflow-x-auto">
+        <NavLink
+          to="/learn"
+          end
+          className={({ isActive }) =>
+            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            }`
+          }
+        >
+          Lookup
+        </NavLink>
+        <NavLink
+          to="/learn/review"
+          className={({ isActive }) =>
+            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors relative ${
+              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            }`
+          }
+        >
+          Review
+        </NavLink>
+        <NavLink
+          to="/learn/history"
+          className={({ isActive }) =>
+            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            }`
+          }
+        >
+          History
+        </NavLink>
+        <NavLink
+          to="/learn/weekly-test"
+          className={({ isActive }) =>
+            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            }`
+          }
+        >
+          Weekly Test
+        </NavLink>
+      </div>
+      <Outlet />
+    </div>
+  );
+}
+
 function AppContent() {
   const allDueWords = useAtomValue(allDueReviewWordsAtom);
   const reviewCount = allDueWords.length;
@@ -62,13 +116,13 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50">
-      {/* Navigation */}
+      {/* Navigation: 3 main tabs */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-2">
               <span className="text-xl">&#128214;</span>
-              <span className="font-bold text-slate-800 hidden sm:inline">Word Assistant</span>
+              <span className="font-bold text-slate-800 hidden sm:inline">FeedLingo</span>
             </div>
             <div className="flex gap-1">
               <NavLink
@@ -76,25 +130,31 @@ function AppContent() {
                 end
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-slate-600 hover:bg-slate-100'
+                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
                   }`
                 }
               >
-                Lookup
+                Discover
               </NavLink>
               <NavLink
-                to="/review"
+                to="/audio"
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${
-                    isActive
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-slate-600 hover:bg-slate-100'
+                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
                   }`
                 }
               >
-                Review
+                Audio
+              </NavLink>
+              <NavLink
+                to="/learn"
+                className={({ isActive }) =>
+                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${
+                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                  }`
+                }
+              >
+                Learn
                 {reviewCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                     {reviewCount > 9 ? '9+' : reviewCount}
@@ -102,28 +162,14 @@ function AppContent() {
                 )}
               </NavLink>
               <NavLink
-                to="/history"
-                className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-slate-600 hover:bg-slate-100'
-                  }`
-                }
-              >
-                History
-              </NavLink>
-              <NavLink
                 to="/me"
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'text-slate-600 hover:bg-slate-100'
+                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
                   }`
                 }
               >
-                Me
+                Profile
               </NavLink>
             </div>
             <div className="flex items-center gap-3">
@@ -154,9 +200,14 @@ function AppContent() {
       {/* Main content */}
       <main className="max-w-3xl mx-auto px-4 py-8">
         <Routes>
-          <Route path="/" element={<WordLookup onWordAdded={triggerSync} />} />
-          <Route path="/review" element={<ReviewTest onReviewComplete={triggerSync} />} />
-          <Route path="/history" element={<WordHistory />} />
+          <Route path="/" element={<Discovery />} />
+          <Route path="/audio" element={<AudioChannel />} />
+          <Route path="/learn" element={<LearnLayout />}>
+            <Route index element={<WordLookup onWordAdded={triggerSync} />} />
+            <Route path="review" element={<ReviewTest onReviewComplete={triggerSync} />} />
+            <Route path="history" element={<WordHistory />} />
+            <Route path="weekly-test" element={<WeeklyTest />} />
+          </Route>
           <Route path="/me" element={<ProfileStats />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth-callback" element={<AuthCallback />} />

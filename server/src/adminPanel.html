@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — FeedLingo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #1e293b; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 24px; }
+    .auth-box { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 24px; }
+    .auth-box input { padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; width: 280px; }
+    .auth-box button { padding: 10px 20px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; cursor: pointer; margin-left: 8px; }
+    .auth-box button:hover { background: #4338ca; }
+    .error { color: #dc2626; font-size: 0.875rem; margin-top: 8px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 16px; }
+    .card h2 { font-size: 1rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 16px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .stat { padding: 12px; background: #f1f5f9; border-radius: 8px; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #334155; }
+    .stat-label { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { color: #64748b; font-weight: 500; }
+    .refresh { padding: 8px 16px; background: #e2e8f0; border: none; border-radius: 8px; cursor: pointer; font-size: 0.875rem; margin-bottom: 16px; }
+    .refresh:hover { background: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📊 Admin Dashboard</h1>
+    <div id="auth" class="auth-box">
+      <p style="margin: 0 0 12px 0; color: #64748b;">Enter admin secret to view metrics:</p>
+      <form id="auth-form">
+        <input type="password" id="secret" placeholder="Admin secret" autocomplete="off" />
+        <button type="submit">View Dashboard</button>
+      </form>
+      <p id="auth-error" class="error" style="display:none;"></p>
+    </div>
+    <div id="dashboard" style="display:none;">
+      <button class="refresh" onclick="loadDashboard()">↻ Refresh</button>
+      <div id="content"></div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const params = new URLSearchParams(location.search);
+      const urlSecret = params.get('secret');
+      if (urlSecret) {
+        sessionStorage.setItem('adminSecret', urlSecret);
+        history.replaceState({}, '', location.pathname);
+        showDashboard();
+      }
+      const form = document.getElementById('auth-form');
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const secret = document.getElementById('secret').value.trim();
+        if (!secret) return;
+        sessionStorage.setItem('adminSecret', secret);
+        showDashboard();
+      };
+    })();
+    function getSecret() { return sessionStorage.getItem('adminSecret'); }
+    function showDashboard() {
+      document.getElementById('auth').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      loadDashboard();
+    }
+    async function loadDashboard() {
+      const secret = getSecret();
+      if (!secret) return;
+      const content = document.getElementById('content');
+      content.innerHTML = '<p>Loading…</p>';
+      try {
+        const res = await fetch('/api/admin/dashboard', {
+          headers: { 'X-Admin-Secret': secret }
+        });
+        if (res.status === 401) {
+          sessionStorage.removeItem('adminSecret');
+          document.getElementById('auth').style.display = 'block';
+          document.getElementById('dashboard').style.display = 'none';
+          document.getElementById('auth-error').textContent = 'Invalid secret';
+          document.getElementById('auth-error').style.display = 'block';
+          return;
+        }
+        const data = await res.json();
+        renderDashboard(data);
+      } catch (e) {
+        content.innerHTML = '<p class="error">Failed to load: ' + e.message + '</p>';
+      }
+    }
+    function renderDashboard(data) {
+      const o = data.overview || {};
+      const today = data.today || {};
+      const yesterday = data.yesterday || {};
+      const reports = data.recentCrawlReports || [];
+      const bySource = data.articlesBySource || [];
+      const byDay = data.articlesByDay || [];
+      document.getElementById('content').innerHTML = `
+        <div class="card">
+          <h2>Overview</h2>
+          <div class="grid">
+            <div class="stat"><div class="stat-value">${o.totalUsers ?? 0}</div><div class="stat-label">Total Users</div></div>
+            <div class="stat"><div class="stat-value">${o.totalWords ?? 0}</div><div class="stat-label">Total Words</div></div>
+            <div class="stat"><div class="stat-value">${o.totalArticles ?? 0}</div><div class="stat-label">Total Articles</div></div>
+            <div class="stat"><div class="stat-value">${o.totalArticleReads ?? 0}</div><div class="stat-label">Article Reads</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Today's Metrics</h2>
+          <div class="grid">
+            <div class="stat"><div class="stat-value">${today.define_requests ?? 0}</div><div class="stat-label">Define / Lookup</div></div>
+            <div class="stat"><div class="stat-value">${today.article_content_requests ?? 0}</div><div class="stat-label">Article Content</div></div>
+            <div class="stat"><div class="stat-value">${today.recommend_requests ?? 0}</div><div class="stat-label">Recommend</div></div>
+            <div class="stat"><div class="stat-value">${today.article_reads ?? 0}</div><div class="stat-label">Article Reads</div></div>
+            <div class="stat"><div class="stat-value">${today.sync_requests ?? 0}</div><div class="stat-label">Sync</div></div>
+            <div class="stat"><div class="stat-value">${today.weekly_test_requests ?? 0}</div><div class="stat-label">Weekly Test</div></div>
+            <div class="stat"><div class="stat-value">${today.uniqueReaders ?? 0}</div><div class="stat-label">Unique Readers</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Yesterday's Metrics</h2>
+          <div class="grid">
+            <div class="stat"><div class="stat-value">${yesterday.define_requests ?? 0}</div><div class="stat-label">Define</div></div>
+            <div class="stat"><div class="stat-value">${yesterday.article_content_requests ?? 0}</div><div class="stat-label">Article</div></div>
+            <div class="stat"><div class="stat-value">${yesterday.recommend_requests ?? 0}</div><div class="stat-label">Recommend</div></div>
+            <div class="stat"><div class="stat-value">${yesterday.article_reads ?? 0}</div><div class="stat-label">Reads</div></div>
+            <div class="stat"><div class="stat-value">${yesterday.sync_requests ?? 0}</div><div class="stat-label">Sync</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Articles by Source (不同类型)</h2>
+          ${bySource.length ? `
+            <table>
+              <thead><tr><th>Source</th><th>Count</th></tr></thead>
+              <tbody>
+                ${bySource.map(r => `<tr><td>${r.source_name}</td><td>${r.count}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          ` : '<p style="color:#64748b;">No articles yet.</p>'}
+        </div>
+        <div class="card">
+          <h2>Articles Ingested per Day (每天入库数量)</h2>
+          ${byDay.length ? `
+            <table>
+              <thead><tr><th>Date</th><th>Count</th></tr></thead>
+              <tbody>
+                ${byDay.map(r => `<tr><td>${r.date}</td><td>${r.count}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          ` : '<p style="color:#64748b;">No recent data.</p>'}
+        </div>
+        <div class="card">
+          <h2>Recent Crawl Reports</h2>
+          ${reports.length ? `
+            <table>
+              <thead><tr><th>Date</th><th>Ingested</th><th>Skipped</th><th>Errors</th><th>Duration</th></tr></thead>
+              <tbody>
+                ${reports.map(r => `
+                  <tr>
+                    <td><a href="/api/admin/reports/${r.report_date}?secret=${encodeURIComponent(getSecret())}" target="_blank">${r.report_date}</a></td>
+                    <td>${r.ingested}</td><td>${r.skipped}</td><td>${r.errors}</td>
+                    <td>${(r.duration_ms / 1000).toFixed(1)}s</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : '<p style="color:#64748b;">No crawl reports yet.</p>'}
+        </div>
+      `;
+    }
+    if (getSecret()) showDashboard();
+  </script>
+</body>
+</html>

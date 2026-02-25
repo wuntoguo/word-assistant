@@ -97,11 +97,11 @@ export default function WordCard({ word, footer }: WordCardProps) {
         </div>
 
         {/* Examples */}
-        {word.examples.length > 0 && (
-          <div>
-            <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Example Sentences
-            </h3>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Example Sentences
+          </h3>
+          {word.examples && word.examples.length > 0 ? (
             <div className="space-y-2">
               {word.examples.map((ex, i) => (
                 <div
@@ -112,8 +112,10 @@ export default function WordCard({ word, footer }: WordCardProps) {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-slate-400 italic">No examples available for this word.</p>
+          )}
+        </div>
 
         {/* Word image from Wikipedia */}
         <WordImage word={word.word} />

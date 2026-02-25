@@ -1,12 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { authRouter } from './routes/auth.js';
-import { syncRouter } from './routes/sync.js';
+import { setupOnlineRoutes } from './online/index.js';
+import { setupScheduler } from './offline/index.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -16,22 +13,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '5mb' }));
 
-// Health check
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
-});
+setupOnlineRoutes(app);
+setupScheduler();
 
-// Routes
-app.use('/api/auth', authRouter);
-app.use('/api', syncRouter);
-
-// Serve frontend static files in production
-const clientDistDir = path.join(__dirname, '..', '..', 'client-dist');
-app.use(express.static(clientDistDir));
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(clientDistDir, 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
 });

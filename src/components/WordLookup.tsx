@@ -18,7 +18,7 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
   const [result, setResult] = useState<Word | null>(null);
   const [saved, setSaved] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const autoSearchDone = useRef(false);
+  const lastAutoWord = useRef<string | null>(null);
 
   const handleSearch = useCallback(async (termOverride?: string) => {
     const term = (termOverride || searchTerm).trim();
@@ -65,8 +65,8 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
   // Auto-search from URL parameter: /#/?word=something
   useEffect(() => {
     const wordParam = searchParams.get('word');
-    if (wordParam && !autoSearchDone.current) {
-      autoSearchDone.current = true;
+    if (wordParam && wordParam !== lastAutoWord.current) {
+      lastAutoWord.current = wordParam;
       setSearchParams({}, { replace: true });
       handleSearch(wordParam);
     }

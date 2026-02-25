@@ -2,9 +2,9 @@ import { atom } from 'jotai';
 import { Word, User, SyncStatus } from './types';
 
 // --- Storage keys ---
-const WORDS_KEY = 'word-assistant-words';
-const TOKEN_KEY = 'word-assistant-token';
-const LAST_SYNCED_KEY = 'word-assistant-last-synced';
+const WORDS_KEY = 'feedlingo-words';
+const TOKEN_KEY = 'feedlingo-token';
+const LAST_SYNCED_KEY = 'feedlingo-last-synced';
 
 // --- localStorage helpers ---
 function loadFromStorage<T>(key: string, fallback: T): T {
@@ -58,6 +58,9 @@ export const todayReviewWordsAtom = atom((get) => {
   return sorted.slice(0, DAILY_REVIEW_LIMIT);
 });
 
+// Custom practice words: when set, Review uses these instead of daily batch (test-from-history)
+export const customPracticeWordsAtom = atom<Word[] | null>(null);
+
 // --- Auth atoms ---
 export const tokenAtom = atom<string | null>(
   localStorage.getItem(TOKEN_KEY)
@@ -97,3 +100,100 @@ export const lastSyncedAtWriteAtom = atom(
 );
 
 export const isOnlineAtom = atom<boolean>(navigator.onLine);
+
+// --- Level (dynamic English proficiency assessment) ---
+const LEVEL_DATA_KEY = 'feedlingo-level';
+
+export interface LevelData {
+  levelScore: number;
+  band: string;
+  label: string;
+  testCount: number;
+  feedbackCount: number;
+}
+
+const defaultLevel: LevelData = {
+  levelScore: 50,
+  band: 'B1',
+  label: 'Intermediate',
+  testCount: 0,
+  feedbackCount: 0,
+};
+
+export const levelAtom = atom<LevelData>(loadFromStorage<LevelData>(LEVEL_DATA_KEY, defaultLevel));
+
+export const levelWriteAtom = atom(
+  (get) => get(levelAtom),
+  (_get, set, value: LevelData) => {
+    set(levelAtom, value);
+    saveToStorage(LEVEL_DATA_KEY, value);
+  }
+);
+
+// --- Activity stats (reads, listening, reviews) per day ---
+const ACTIVITY_STATS_KEY = 'feedlingo-activity';
+
+export interface DayActivity {
+  reads: number;
+  readingSeconds: number;
+  readingWords: number;
+  listeningSeconds: number;
+  reviews: number;
+}
+
+type ActivityStats = Record<string, Partial<DayActivity>>;
+
+function loadActivityStats(): ActivityStats {
+  return loadFromStorage<ActivityStats>(ACTIVITY_STATS_KEY, {});
+}
+
+const ACTIVITY_EVENT = 'feedlingo-activity-updated';
+
+export function recordActivity(
+  date: string,
+  type: keyof DayActivity,
+  value: number
+): void {
+  const stats = loadActivityStats();
+  const day = stats[date] ?? {};
+  const prev = (day[type] as number) ?? 0;
+  stats[date] = { ...day, [type]: prev + value };
+  saveToStorage(ACTIVITY_STATS_KEY, stats);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ACTIVITY_EVENT));
+  }
+}
+
+export function getActivityForDate(date: string): DayActivity {
+  const stats = loadActivityStats();
+  const day = stats[date] ?? {};
+  return {
+    reads: day.reads ?? 0,
+    readingSeconds: day.readingSeconds ?? 0,
+    readingWords: day.readingWords ?? 0,
+    listeningSeconds: day.listeningSeconds ?? 0,
+    reviews: day.reviews ?? 0,
+  };
+}
+
+export function getActivityForWeek(startDate: string, endDate: string): DayActivity {
+  const stats = loadActivityStats();
+  let reads = 0;
+  let readingSeconds = 0;
+  let readingWords = 0;
+  let listeningSeconds = 0;
+  let reviews = 0;
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  for (const [d, day] of Object.entries(stats)) {
+    const t = new Date(d).getTime();
+    if (t >= start && t <= end) {
+      reads += day.reads ?? 0;
+      readingSeconds += day.readingSeconds ?? 0;
+      readingWords += day.readingWords ?? 0;
+      listeningSeconds += day.listeningSeconds ?? 0;
+      reviews += day.reviews ?? 0;
+    }
+  }
+  return { reads, readingSeconds, readingWords, listeningSeconds, reviews };
+}

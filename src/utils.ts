@@ -1,4 +1,4 @@
-import { Word } from './types';
+import { Word, AudioAccent } from './types';
 
 // Ebbinghaus-inspired spaced repetition intervals (in days)
 const MEMORY_INTERVALS = [
@@ -97,76 +97,184 @@ interface DictionaryEntry {
   meanings: DictionaryMeaning[];
 }
 
-export async function lookupWord(term: string): Promise<Omit<Word, 'id' | 'dateAdded' | 'nextReviewDate' | 'reviewCount' | 'memoryStage' | 'updatedAt'>> {
-  const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(term.trim().toLowerCase())}`);
+interface MWFallbackResult {
+  phonetic: string;
+  audioUrl: string;
+  partOfSpeech: string;
+  definitions: string[];
+  examples: string[];
+}
 
-  if (!response.ok) {
+async function fetchMWFallback(word: string): Promise<MWFallbackResult | null> {
+  try {
+    const res = await fetch(`/api/define/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    return await res.json() as MWFallbackResult;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMWLearner(word: string): Promise<MWFallbackResult | null> {
+  try {
+    const res = await fetch(`/api/define-learner/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    return await res.json() as MWFallbackResult;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMWIntermediate(word: string): Promise<MWFallbackResult | null> {
+  try {
+    const res = await fetch(`/api/define-intermediate/${encodeURIComponent(word)}`);
+    if (!res.ok) return null;
+    return await res.json() as MWFallbackResult;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTatoebaSentences(word: string): Promise<string[]> {
+  try {
+    const res = await fetch(`/api/sentences/${encodeURIComponent(word)}`);
+    if (!res.ok) return [];
+    const { sentences } = await res.json() as { sentences: string[] };
+    return sentences;
+  } catch {
+    return [];
+  }
+}
+
+export async function lookupWord(term: string): Promise<Omit<Word, 'id' | 'dateAdded' | 'nextReviewDate' | 'reviewCount' | 'memoryStage' | 'updatedAt'>> {
+  const normalized = term.trim().toLowerCase();
+
+  // --- 1. Fetch FD and MW Learner's in parallel ---
+  let fdResult: {
+    word: string;
+    phonetic: string;
+    audioUrl: string;
+    audioAccent: string;
+    partOfSpeech: string;
+    definitions: string[];
+    examples: string[];
+  } | null = null;
+
+  const [fdData, learnerResult, intermediateResult] = await Promise.all([
+    fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(normalized)}`)
+      .then((r) => (r.ok ? r.json() as Promise<DictionaryEntry[]> : null))
+      .catch(() => null),
+    fetchMWLearner(normalized),
+    fetchMWIntermediate(normalized),
+  ]);
+
+  if (fdData && Array.isArray(fdData) && fdData.length > 0) {
+    const entry = fdData[0];
+    const usEntry = entry.phonetics.find((p) => p.audio?.includes('-us'));
+    const ukEntry = entry.phonetics.find((p) => p.audio?.includes('-uk'));
+    const auEntry = entry.phonetics.find((p) => p.audio?.includes('-au'));
+    const anyWithAudio = entry.phonetics.find((p) => p.audio && p.audio.length > 0);
+    const anyWithText = entry.phonetics.find((p) => p.text && p.text.length > 0);
+
+    const bestAudioEntry = usEntry || ukEntry || auEntry || anyWithAudio;
+    const audioUrl = bestAudioEntry?.audio || '';
+    const phonetic = usEntry?.text || anyWithText?.text || entry.phonetic || '';
+    const audioAccent = usEntry?.audio ? 'US'
+      : ukEntry?.audio ? 'UK'
+      : auEntry?.audio ? 'AU'
+      : '';
+
+    const allDefinitions: string[] = [];
+    const allExamples: string[] = [];
+    let primaryPartOfSpeech = '';
+
+    for (const meaning of entry.meanings) {
+      if (!primaryPartOfSpeech) primaryPartOfSpeech = meaning.partOfSpeech;
+      for (const def of meaning.definitions) {
+        if (allDefinitions.length < 3) {
+          const prefix = entry.meanings.length > 1 ? `(${meaning.partOfSpeech}) ` : '';
+          allDefinitions.push(prefix + def.definition);
+        }
+        if (def.example && allExamples.length < 4) {
+          allExamples.push(def.example);
+        }
+      }
+    }
+
+    if (allExamples.length < 2 && fdData.length > 1) {
+      for (let i = 1; i < fdData.length && allExamples.length < 4; i++) {
+        for (const meaning of fdData[i].meanings) {
+          for (const def of meaning.definitions) {
+            if (def.example && allExamples.length < 4 && !allExamples.includes(def.example)) {
+              allExamples.push(def.example);
+            }
+          }
+        }
+      }
+    }
+
+    fdResult = {
+      word: entry.word,
+      phonetic,
+      audioUrl,
+      audioAccent,
+      partOfSpeech: primaryPartOfSpeech,
+      definitions: allDefinitions,
+      examples: allExamples,
+    };
+  }
+
+  const simpleDefSource = learnerResult?.definitions?.length ? learnerResult : intermediateResult?.definitions?.length ? intermediateResult : null;
+
+  // --- 2. MW Collegiate fallback for missing audio/phonetic ---
+  const needsMW = !fdResult || !fdResult.audioUrl || !fdResult.phonetic ||
+    (fdResult.definitions.length === 0 && !simpleDefSource?.definitions?.length);
+  const mwResult = needsMW ? await fetchMWFallback(normalized) : null;
+
+  if (!fdResult && !simpleDefSource && !mwResult) {
     throw new Error('Word not found. Please check the spelling and try again.');
   }
 
-  const data: DictionaryEntry[] = await response.json();
-  const entry = data[0];
+  // --- 3. Merge: prefer Learner's definitions (simpler), else FD, else MW ---
+  const word = fdResult?.word || normalized;
+  const phonetic = fdResult?.phonetic || simpleDefSource?.phonetic || mwResult?.phonetic || '';
+  const audioUrl = fdResult?.audioUrl || simpleDefSource?.audioUrl || mwResult?.audioUrl || '';
+  const audioAccent: AudioAccent = fdResult?.audioUrl
+    ? (fdResult.audioAccent as AudioAccent)
+    : simpleDefSource?.audioUrl || mwResult?.audioUrl ? 'US' : '';
+  const partOfSpeech = fdResult?.partOfSpeech || simpleDefSource?.partOfSpeech || mwResult?.partOfSpeech || '';
 
-  // Categorize phonetics by accent: US > UK > AU > other
-  const usEntry = entry.phonetics.find((p) => p.audio?.includes('-us'));
-  const ukEntry = entry.phonetics.find((p) => p.audio?.includes('-uk'));
-  const auEntry = entry.phonetics.find((p) => p.audio?.includes('-au'));
-  const anyWithAudio = entry.phonetics.find((p) => p.audio && p.audio.length > 0);
-  const anyWithText = entry.phonetics.find((p) => p.text && p.text.length > 0);
+  // Prefer Learner's or Intermediate definitions (clearer, simpler than FD/Collegiate)
+  const useSimpleDefs = !!simpleDefSource?.definitions?.length;
+  let definitions = useSimpleDefs
+    ? simpleDefSource!.definitions
+    : fdResult?.definitions || mwResult?.definitions || [];
 
-  // Prefer US audio, fallback UK > AU > any
-  const bestAudioEntry = usEntry || ukEntry || auEntry || anyWithAudio;
-  const audioUrl = bestAudioEntry?.audio || '';
-
-  // For IPA text: prefer US entry's text, then any available text
-  const phonetic = usEntry?.text || anyWithText?.text || entry.phonetic || '';
-
-  // Tag the accent of the audio source
-  const audioAccent = usEntry?.audio ? 'US' as const
-    : ukEntry?.audio ? 'UK' as const
-    : auEntry?.audio ? 'AU' as const
-    : '' as const;
-
-  // Collect definitions and examples from all meanings
-  const allDefinitions: string[] = [];
-  const allExamples: string[] = [];
-  let primaryPartOfSpeech = '';
-
-  for (const meaning of entry.meanings) {
-    if (!primaryPartOfSpeech) {
-      primaryPartOfSpeech = meaning.partOfSpeech;
-    }
-    for (const def of meaning.definitions) {
-      if (allDefinitions.length < 3) {
-        const prefix = entry.meanings.length > 1 ? `(${meaning.partOfSpeech}) ` : '';
-        allDefinitions.push(prefix + def.definition);
-      }
-      if (def.example && allExamples.length < 4) {
-        allExamples.push(def.example);
-      }
+  let examples = useSimpleDefs ? (simpleDefSource?.examples || []) : (fdResult?.examples || []);
+  for (const src of [fdResult?.examples, mwResult?.examples]) {
+    if (!src || examples.length >= 4) continue;
+    for (const ex of src) {
+      if (examples.length < 4 && !examples.includes(ex)) examples.push(ex);
     }
   }
 
-  // If fewer than 2 examples, try to get more from secondary entries
-  if (allExamples.length < 2 && data.length > 1) {
-    for (let i = 1; i < data.length && allExamples.length < 4; i++) {
-      for (const meaning of data[i].meanings) {
-        for (const def of meaning.definitions) {
-          if (def.example && allExamples.length < 4 && !allExamples.includes(def.example)) {
-            allExamples.push(def.example);
-          }
-        }
+  // --- 4. Last resort for examples: Tatoeba corpus ---
+  if (examples.length < 2) {
+    const tatoeba = await fetchTatoebaSentences(word);
+    for (const s of tatoeba) {
+      if (examples.length < 4 && !examples.includes(s)) {
+        examples.push(s);
       }
     }
   }
 
   return {
-    word: entry.word,
+    word,
     phonetic,
     audioUrl,
     audioAccent,
-    partOfSpeech: primaryPartOfSpeech,
-    definitions: allDefinitions,
-    examples: allExamples,
+    partOfSpeech,
+    definitions,
+    examples,
   };
 }

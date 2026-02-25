@@ -1,0 +1,23 @@
+# 每日爬取 + 推荐预计算（解决 Fly.io scale-to-zero 时 cron 不运行）
+# 需在 Repo Settings → Secrets 添加 CRON_SECRET
+name: Daily Crawl
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 每天 0:00 UTC（北京时间 8:00）
+  workflow_dispatch:      # 支持手动运行
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily pipeline (async - 立即返回，后台执行约 5–10 分钟)
+        run: |
+          resp=$(curl -sf -w "\n%{http_code}" -X POST "https://feedlingo.fly.dev/api/cron/daily?async=1" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          code=$(echo "$resp" | tail -n1)
+          body=$(echo "$resp" | sed '$d')
+          echo "Response ($code): $body"
+          if [ "$code" != "202" ]; then
+            exit 1
+          fi

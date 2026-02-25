@@ -16,6 +16,7 @@ RUN npm install
 COPY server/tsconfig.json ./
 COPY server/src/ src/
 RUN npm run build
+COPY server/src/adminPanel.html ./dist/
 
 # Stage 3: Production
 FROM node:20-slim AS production

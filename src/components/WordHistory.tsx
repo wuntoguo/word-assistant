@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useAtom } from 'jotai';
+import { useNavigate } from 'react-router-dom';
 import { wordsAtom } from '../store';
 import { getWeekRange, getWordsInDateRange, exportToCSV } from '../utils';
 
 export default function WordHistory() {
   const [words, setWords] = useAtom(wordsAtom);
+  const navigate = useNavigate();
   const [weekOffset, setWeekOffset] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -128,35 +130,34 @@ export default function WordHistory() {
                 {dateWords.map((w) => (
                   <div
                     key={w.id}
-                    className="bg-white rounded-xl border border-slate-100 p-4 hover:shadow-sm transition-shadow"
+                    className="bg-white rounded-xl border border-slate-100 p-3 hover:shadow-sm transition-shadow flex items-center"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="text-lg font-semibold text-slate-800">{w.word}</span>
-                          <span className="text-sm text-slate-400 font-mono">{w.phonetic}</span>
-                          {w.partOfSpeech && (
-                            <span className="text-xs text-slate-400 italic">{w.partOfSpeech}</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-600 truncate">
-                          {w.definitions[0]}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageColors[w.memoryStage]}`}>
-                          {stageLabels[w.memoryStage]}
-                        </span>
-                        <button
-                          onClick={() => toggleArchive(w.id, true)}
-                          className="p-1.5 text-slate-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50"
-                          title="Archive (stop reviewing)"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                          </svg>
-                        </button>
-                      </div>
+                    <button
+                      onClick={() => navigate(`/learn?word=${encodeURIComponent(w.word)}`)}
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left hover:text-indigo-600 transition-colors"
+                    >
+                      <span className="text-lg font-semibold text-slate-800">{w.word}</span>
+                      <span className="text-sm text-slate-400 font-mono">{w.phonetic}</span>
+                      {w.partOfSpeech && (
+                        <span className="text-xs text-slate-400 italic">{w.partOfSpeech}</span>
+                      )}
+                      <svg className="w-4 h-4 text-slate-300 ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${stageColors[w.memoryStage]}`}>
+                        {stageLabels[w.memoryStage]}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleArchive(w.id, true); }}
+                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50"
+                        title="Archive (stop reviewing)"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -221,23 +222,21 @@ export default function WordHistory() {
               {archivedWords.map((w) => (
                 <div
                   key={w.id}
-                  className="bg-slate-50 rounded-xl border border-slate-100 p-4 opacity-70"
+                  className="bg-slate-50 rounded-xl border border-slate-100 p-3 opacity-70 flex items-center"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg font-semibold text-slate-500">{w.word}</span>
-                        <span className="text-sm text-slate-400 font-mono">{w.phonetic}</span>
-                      </div>
-                      <p className="text-sm text-slate-400 truncate">{w.definitions[0]}</p>
-                    </div>
-                    <button
-                      onClick={() => toggleArchive(w.id, false)}
-                      className="flex-shrink-0 ml-3 px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
-                    >
-                      Restore
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => navigate(`/learn?word=${encodeURIComponent(w.word)}`)}
+                    className="flex-1 min-w-0 flex items-center gap-3 text-left hover:text-indigo-600 transition-colors"
+                  >
+                    <span className="text-lg font-semibold text-slate-500">{w.word}</span>
+                    <span className="text-sm text-slate-400 font-mono">{w.phonetic}</span>
+                  </button>
+                  <button
+                    onClick={() => toggleArchive(w.id, false)}
+                    className="flex-shrink-0 ml-3 px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors border border-indigo-200"
+                  >
+                    Restore
+                  </button>
                 </div>
               ))}
             </div>

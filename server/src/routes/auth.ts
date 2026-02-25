@@ -31,6 +31,22 @@ export function authMiddleware(req: Request, res: Response, next: () => void) {
   }
 }
 
+// Optional auth: attach userId if token valid, else continue without (no 401)
+export function optionalAuthMiddleware(req: Request, _res: Response, next: () => void) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+  try {
+    const payload = jwt.verify(header.slice(7), JWT_SECRET) as { userId: string };
+    (req as any).userId = payload.userId;
+  } catch {
+    // ignore invalid token
+  }
+  next();
+}
+
 // ==================== Google OAuth ====================
 
 // Step 1: Redirect to Google

@@ -1,6 +1,6 @@
-# fly.toml app configuration file for word-assistant
+# fly.toml app configuration file for feedlingo
 
-app = 'word-assistant'
+app = 'feedlingo'
 primary_region = 'nrt'
 
 [build]

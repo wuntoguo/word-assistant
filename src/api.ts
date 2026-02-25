@@ -3,7 +3,7 @@ import { User, Word } from './types';
 const API_BASE = '/api';
 
 function getToken(): string | null {
-  return localStorage.getItem('word-assistant-token');
+  return localStorage.getItem('feedlingo-token');
 }
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -71,4 +71,125 @@ export async function syncWords(
     method: 'POST',
     body: JSON.stringify({ lastSyncedAt, clientWords }),
   });
+}
+
+// --- Level ---
+
+export interface LevelResult {
+  levelScore: number;
+  band: string;
+  label: string;
+  testCount: number;
+  feedbackCount: number;
+  testAvg: number;
+  suitableRatio: number;
+}
+
+export async function submitTestResult(score: number, total: number): Promise<LevelResult | null> {
+  try {
+    return await apiFetch<LevelResult>('/level/test-result', {
+      method: 'POST',
+      body: JSON.stringify({ score, total }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export type DifficultyFeedback = 'appropriate' | 'too_hard' | 'too_easy';
+
+export async function submitArticleFeedback(
+  articleKey: string,
+  liked?: boolean,
+  difficulty?: DifficultyFeedback,
+  articleId?: string
+): Promise<LevelResult | null> {
+  try {
+    return await apiFetch<LevelResult>('/level/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ articleKey, articleId, liked, difficulty }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchLevel(): Promise<LevelResult | null> {
+  try {
+    return await apiFetch<LevelResult>('/level');
+  } catch {
+    return null;
+  }
+}
+
+// --- Recommend ---
+
+export interface RecommendArticle {
+  id?: string;
+  title: string;
+  link: string;
+  pubDate: string;
+  description: string;
+  simplified: string;
+  source?: string;
+  keywords?: string[];
+  difficulty?: string;
+  audioUrl?: string;
+  scores?: {
+    interestScore: number;
+    difficultyScore: number;
+    totalScore: number;
+    interestReason: string;
+    difficultyReason: string;
+    freshnessScore?: number;
+    showCount?: number;
+    adjustedTotal?: number;
+  };
+  recommendationReason?: string;
+}
+
+export interface RecommendResponse {
+  articles: RecommendArticle[];
+  hasMore: boolean;
+  profile?: {
+    levelBand: string;
+    levelScore: number;
+    interestKeywords: string[];
+    suitableCount: number;
+  };
+}
+
+export async function fetchRecommend(limit = 10, offset = 0): Promise<RecommendResponse | null> {
+  try {
+    return await apiFetch<RecommendResponse>(`/recommend?limit=${limit}&offset=${offset}&debug=true`);
+  } catch {
+    return null;
+  }
+}
+
+// --- Profile (static preferences for recommendations) ---
+
+export interface UserProfilePreferences {
+  interestKeywords: string[];
+  preferredLevelBand: string | null;
+}
+
+export async function fetchProfile(): Promise<UserProfilePreferences | null> {
+  try {
+    return await apiFetch<UserProfilePreferences>('/profile');
+  } catch {
+    return null;
+  }
+}
+
+export async function updateProfile(prefs: UserProfilePreferences): Promise<boolean> {
+  try {
+    await apiFetch<{ ok: boolean }>('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

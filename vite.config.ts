@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Word Assistant',
-        short_name: 'WordAssist',
+        name: 'FeedLingo',
+        short_name: 'FeedLingo',
         description: 'Vocabulary builder with spaced repetition',
         theme_color: '#4f46e5',
         background_color: '#f8fafc',
@@ -37,7 +37,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/admin\/?$/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.dictionaryapi\.dev/,
