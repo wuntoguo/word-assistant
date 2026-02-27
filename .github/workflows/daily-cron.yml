@@ -4,7 +4,8 @@ name: Daily Crawl
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # 每天 0:00 UTC（北京时间 8:00）
+    # 临时测试：美西 10:02（当前 2 月为 PST -> 18:02 UTC）
+    - cron: '2 18 * * *'
   workflow_dispatch:      # 支持手动运行
 
 jobs:
@@ -15,6 +16,13 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          # 临时测试：只在美西时间 10 点触发
+          LA_HOUR=$(TZ=America/Los_Angeles date +%H)
+          if [ "$LA_HOUR" != "10" ]; then
+            echo "Skip: current America/Los_Angeles hour is $LA_HOUR, target is 10."
+            exit 0
+          fi
+
           # 去掉可能的换行（粘贴时带入）
           CRON_SECRET=$(printf '%s' "$CRON_SECRET" | tr -d '\n\r')
           if [ -z "$CRON_SECRET" ]; then
