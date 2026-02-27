@@ -4,8 +4,11 @@ name: Daily Crawl
 
 on:
   schedule:
-    # 临时测试：美西 10:02（当前 2 月为 PST -> 18:02 UTC）
-    - cron: '2 18 * * *'
+    # 美西早上 07:00（自动覆盖冬令时/夏令时）
+    # - PST(UTC-8): 15:00 UTC
+    # - PDT(UTC-7): 14:00 UTC
+    - cron: '0 14 * * *'
+    - cron: '0 15 * * *'
   workflow_dispatch:      # 支持手动运行
 
 jobs:
@@ -16,10 +19,10 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          # 临时测试：只在美西时间 10 点触发
+          # 只在美西时间 07:00 触发，避免双 cron 在非目标小时执行
           LA_HOUR=$(TZ=America/Los_Angeles date +%H)
-          if [ "$LA_HOUR" != "10" ]; then
-            echo "Skip: current America/Los_Angeles hour is $LA_HOUR, target is 10."
+          if [ "$LA_HOUR" != "07" ]; then
+            echo "Skip: current America/Los_Angeles hour is $LA_HOUR, target is 07."
             exit 0
           fi
 
