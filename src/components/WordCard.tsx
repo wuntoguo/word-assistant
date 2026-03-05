@@ -25,14 +25,14 @@ export default function WordCard({ word, footer }: WordCardProps) {
   }, [word.audioUrl, playing]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden">
+    <div className="panel overflow-hidden">
       {/* Header */}
-      <div className="p-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
+      <div className="p-6 bg-gradient-to-r from-[#1e3a8a] to-[#0f766e] text-white">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold">{word.word}</h2>
+            <h2 className="text-3xl font-extrabold tracking-tight">{word.word}</h2>
             <div className="flex items-center gap-2 mt-1">
-              <p className="text-indigo-100 text-lg font-mono">
+              <p className="text-blue-100 text-lg font-mono">
                 {word.phonetic || 'No phonetic available'}
               </p>
               {word.audioAccent && (
@@ -69,7 +69,7 @@ export default function WordCard({ word, footer }: WordCardProps) {
         </div>
 
         {word.partOfSpeech && (
-          <span className="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-sm">
+          <span className="inline-block mt-2 px-3 py-1 bg-white/20 rounded-full text-sm font-semibold">
             {word.partOfSpeech}
           </span>
         )}
@@ -78,7 +78,7 @@ export default function WordCard({ word, footer }: WordCardProps) {
       </div>
 
       {/* Body */}
-      <div className="p-6 space-y-5">
+      <div className="content-card space-y-5">
         {/* Definitions */}
         <div>
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
@@ -90,7 +90,7 @@ export default function WordCard({ word, footer }: WordCardProps) {
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-semibold">
                   {i + 1}
                 </span>
-                <span className="text-slate-700 leading-relaxed">{def}</span>
+                <span className="text-slate-700 leading-relaxed article-text">{def}</span>
               </li>
             ))}
           </ol>
@@ -106,7 +106,7 @@ export default function WordCard({ word, footer }: WordCardProps) {
               {word.examples.map((ex, i) => (
                 <div
                   key={i}
-                  className="pl-4 border-l-3 border-indigo-300 text-slate-600 italic leading-relaxed"
+                  className="pl-4 border-l-2 border-indigo-300 text-slate-600 italic leading-relaxed article-text"
                 >
                   &ldquo;{ex}&rdquo;
                 </div>

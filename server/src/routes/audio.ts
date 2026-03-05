@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getArticlesForAudioGeneration } from '../db.js';
+import { getArticlesForAudioGeneration } from '../repositories/articleRepo.js';
 import { getArticleAudioPath, getArticleAudioDurationSeconds, getAudioDir } from '../articleTts.js';
 import { getRecommendedAudioArticles } from '../recommendation.js';
 import { optionalAuthMiddleware } from './auth.js';
@@ -19,6 +19,8 @@ interface AudioItem {
   durationSeconds?: number;
   keywords?: string[];
   pubDate: string;
+  postedAt?: string | null;
+  crawledAt?: string | null;
   description: string;
   simplified?: string;
   source?: string;
@@ -80,6 +82,8 @@ audioRouter.get('/items', (_req: Request, res: Response) => {
       durationSeconds: getArticleAudioDurationSeconds(a.id) ?? undefined,
       keywords: kw.length > 0 ? kw : undefined,
       pubDate: a.pub_date || a.created_at || '',
+      postedAt: a.pub_date || null,
+      crawledAt: a.created_at || null,
       description: (a.simplified_content || a.content || '').slice(0, 300),
       source: a.source_name || undefined,
     });
@@ -117,6 +121,8 @@ audioRouter.get('/recommend', optionalAuthMiddleware, (req: Request, res: Respon
       durationSeconds: getArticleAudioDurationSeconds(s.article.id) ?? undefined,
       keywords: kw.length > 0 ? kw : undefined,
       pubDate: s.article.pub_date || s.article.created_at || '',
+      postedAt: s.article.pub_date || null,
+      crawledAt: s.article.created_at || null,
       description: (s.article.simplified_content || s.article.content || '').slice(0, 300),
       simplified: s.article.simplified_content || s.article.content || '',
       source: s.article.source_name || undefined,

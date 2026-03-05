@@ -10,7 +10,7 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getArticleById } from './db.js';
+import { getArticleById } from './repositories/articleRepo.js';
 
 const require = createRequire(import.meta.url);
 const gtts = require('node-gtts')('en');

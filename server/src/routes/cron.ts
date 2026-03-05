@@ -1,6 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { runTaskWithDeps, runTask, runDailyPipeline } from '../offline/index.js';
-import db, { getCrawlReports, getArticleCountByDay, getArticleCount, getArticleCountBySourceForDate } from '../db.js';
+import { getCrawlReports } from '../repositories/crawlReportRepo.js';
+import {
+  getArticleCountByDay,
+  getArticleCount,
+  getArticleCountBySourceForDate,
+  getVocabStoryCount,
+  getCrawledArticleCount,
+} from '../repositories/articleRepo.js';
 
 export const cronRouter = Router();
 
@@ -13,7 +20,7 @@ function isAuthorized(req: Request): boolean {
   return token === CRON_SECRET;
 }
 
-type TaskOptions = { userId?: string; daysBack?: number; skipDeps?: boolean };
+type TaskOptions = { userId?: string; daysBack?: number; skipDeps?: boolean; date?: string };
 
 function handleTask(req: Request, res: Response, taskId: string, options?: TaskOptions) {
   if (!isAuthorized(req)) {
@@ -49,6 +56,18 @@ cronRouter.post('/warm-recommendations', (req, res) =>
 // POST /api/cron/article-audio
 cronRouter.post('/article-audio', (req, res) => handleTask(req, res, 'article-audio'));
 
+// POST /api/cron/events-daily-agg?date=YYYY-MM-DD
+cronRouter.post('/events-daily-agg', (req, res) => {
+  const date = req.query.date as string | undefined;
+  handleTask(req, res, 'events-daily-agg', { date });
+});
+
+// POST /api/cron/user-profile-daily?date=YYYY-MM-DD
+cronRouter.post('/user-profile-daily', (req, res) => {
+  const date = req.query.date as string | undefined;
+  handleTask(req, res, 'user-profile-daily', { date });
+});
+
 // POST /api/cron/daily - full pipeline: crawl → embedding-refresh → precompute
 // ?async=1 立即返回 202，后台执行（适合 GitHub Actions / 短超时场景）
 cronRouter.post('/daily', async (req, res) => {
@@ -57,13 +76,22 @@ cronRouter.post('/daily', async (req, res) => {
     return;
   }
   const async = (req.query.async as string) === '1' || (req.query.async as string) === 'true';
+  const resume = (req.query.resume as string) === '1' || (req.query.resume as string) === 'true';
+  const reset = (req.query.reset as string) === '1' || (req.query.reset as string) === 'true';
+  const date = (req.query.date as string) || undefined;
 
   if (async) {
-    res.status(202).json({ ok: true, message: 'Daily pipeline started in background' });
-    runDailyPipeline()
-      .then(({ crawl, embeddingRefresh, vocabStory, precompute }) => {
+    res.status(202).json({
+      ok: true,
+      message: 'Daily pipeline started in background',
+      run: { date, resume, reset },
+    });
+    runDailyPipeline({ date, resume, reset })
+      .then(({ crawl, eventsAgg, profileDaily, embeddingRefresh, vocabStory, precompute }) => {
         console.log('[Cron] Daily (async) done:', {
           crawl: crawl.ok ? 'ok' : crawl.error,
+          eventsAgg: eventsAgg?.ok ? 'ok' : eventsAgg?.error,
+          profileDaily: profileDaily?.ok ? 'ok' : profileDaily?.error,
           embedding: embeddingRefresh?.ok ? 'ok' : embeddingRefresh?.error,
           vocabStory: vocabStory?.ok ? 'ok' : vocabStory?.error,
           precompute: precompute?.ok ? 'ok' : precompute?.error,
@@ -74,10 +102,13 @@ cronRouter.post('/daily', async (req, res) => {
   }
 
   try {
-    const { crawl, embeddingRefresh, vocabStory, precompute } = await runDailyPipeline();
+    const { crawl, eventsAgg, profileDaily, embeddingRefresh, vocabStory, precompute } = await runDailyPipeline({ date, resume, reset });
     res.json({
       ok: true,
+      run: { date, resume, reset },
       crawl: crawl.ok ? crawl.data : { error: crawl.error },
+      eventsAgg: eventsAgg?.ok ? eventsAgg.data : eventsAgg?.error,
+      profileDaily: profileDaily?.ok ? profileDaily.data : profileDaily?.error,
       embeddingRefresh: embeddingRefresh?.ok ? embeddingRefresh.data : embeddingRefresh?.error,
       vocabStory: vocabStory?.ok ? vocabStory.data : vocabStory?.error,
       precompute: precompute?.ok ? precompute.data : precompute?.error,
@@ -107,11 +138,11 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
   const todayRow = articlesByDay.find((r) => r.date === today);
   const reports = getCrawlReports(14);
   const totalArticles = getArticleCount();
-  const vocabCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE is_vocab_story = 1').get() as { c: number };
-  const crawlCount = db.prepare('SELECT COUNT(*) as c FROM articles WHERE COALESCE(is_vocab_story,0)=0').get() as { c: number };
+  const vocabCount = getVocabStoryCount();
+  const crawlCount = getCrawledArticleCount();
   const articlesBySourceToday = getArticleCountBySourceForDate(today);
   const CATEGORY_SOURCES: Record<string, string[]> = {
-    finance: ['Yahoo Finance', 'CNN Business', 'NPR Business', 'CNBC', 'Reuters'],
+    finance: ['Yahoo Finance', 'CNN Business', 'NPR Business'],
     tech: ['CNN Tech', 'TechCrunch', 'Ars Technica', 'NPR Technology'],
     lifestyle: ['CNN Health', 'CNN Travel', 'NPR Health'],
     entertainment: ['CNN Entertainment', 'NPR Arts', 'Variety'],
@@ -146,8 +177,8 @@ cronRouter.get('/stats', (req: Request, res: Response) => {
     timezone: tz,
     articles: {
       total: totalArticles,
-      crawled: crawlCount?.c ?? 0,
-      vocabStories: vocabCount?.c ?? 0,
+      crawled: crawlCount,
+      vocabStories: vocabCount,
       createdToday: todayRow?.count ?? 0,
     },
     articlesByDay: articlesByDay.slice(0, 7),

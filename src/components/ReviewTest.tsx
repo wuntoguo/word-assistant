@@ -246,11 +246,11 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
     const masteredCount = allWords.filter((w) => w.memoryStage >= 4).length;
 
     return (
-      <div className="max-w-2xl mx-auto text-center">
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-10">
+      <div className="content-wrap text-center">
+        <div className="panel p-10">
           <div className="text-6xl mb-4">&#127881;</div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">All Caught Up!</h2>
-          <p className="text-slate-500 mb-6">
+          <h2 className="page-title mb-2">All Caught Up!</h2>
+          <p className="page-subtitle mb-6">
             No words to review today. Keep looking up new words!
           </p>
           {totalWords > 0 && (
@@ -288,7 +288,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                     }
                   }}
                   disabled={preparing}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-70"
+                  className="px-6 py-3 btn-primary text-white rounded-xl font-semibold transition-colors disabled:opacity-70"
                 >
                   {preparing ? 'Preparing...' : `Practice ${PRACTICE_SIZE} words`}
                 </button>
@@ -298,7 +298,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
         </div>
 
         {/* Spaced repetition explainer */}
-        <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-left">
+        <div className="mt-6 panel p-6 text-left">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">How Review Works</h3>
           <div className="space-y-2 text-sm text-slate-600">
             <p>Words are scheduled for review based on the <strong>Ebbinghaus memory curve</strong>:</p>
@@ -324,15 +324,15 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
     const percentage = total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
     return (
-      <div className="max-w-2xl mx-auto text-center">
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-10">
+      <div className="content-wrap text-center">
+        <div className="panel p-10">
           <div className="text-6xl mb-4">
             {percentage >= 80 ? '\u{1F31F}' : percentage >= 50 ? '\u{1F44D}' : '\u{1F4AA}'}
           </div>
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Review Complete!</h2>
+          <h2 className="page-title mb-2">Review Complete!</h2>
           <div className="mb-6">
             <div className="text-5xl font-bold text-indigo-600 mb-1">{percentage}%</div>
-            <p className="text-slate-500">{correctCount} out of {total} words remembered</p>
+            <p className="page-subtitle">{correctCount} out of {total} words remembered</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-6 max-w-xs mx-auto">
@@ -359,7 +359,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
               onClick={resetReview}
-              className="px-6 py-3 bg-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-300 transition-colors"
+              className="px-6 py-3 btn-ghost rounded-xl font-semibold transition-colors"
             >
               Done
             </button>
@@ -386,7 +386,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                   }
                 }}
                 disabled={preparing}
-                className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-70"
+                className="px-6 py-3 btn-primary text-white rounded-xl font-semibold transition-colors disabled:opacity-70"
               >
                 {preparing ? 'Preparing...' : `Practice ${PRACTICE_SIZE} more words`}
               </button>
@@ -400,13 +400,13 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
   // === Pre-start: show today's review summary ===
   if (!started) {
     return (
-      <div className="max-w-2xl mx-auto text-center">
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-10">
+      <div className="content-wrap text-center">
+        <div className="panel p-10">
           <div className="text-6xl mb-4">&#128218;</div>
-          <h1 className="text-2xl font-bold text-slate-800 mb-2">
+          <h1 className="page-title mb-2">
             {customPracticeWords ? 'Practice' : 'Daily Review'}
           </h1>
-          <p className="text-slate-500 mb-6">
+          <p className="page-subtitle mb-6">
             {customPracticeWords ? 'Test yourself on selected words' : 'Time to strengthen your memory!'}
           </p>
 
@@ -483,7 +483,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
               }
             }}
             disabled={preparing}
-            className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors text-lg disabled:opacity-70"
+            className="px-8 py-3 btn-primary text-white rounded-xl font-semibold transition-colors text-lg disabled:opacity-70"
           >
             {preparing ? 'Preparing...' : 'Start Review'}
           </button>
@@ -508,12 +508,12 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
 
   // === Active review (flashcard) ===
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="content-wrap">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">
+        <h1 className="page-title mb-1">
           {customPracticeWords ? 'Practice' : 'Daily Review'}
         </h1>
-        <p className="text-slate-400 text-sm">{modeLabels[currentMode]}</p>
+        <p className="page-subtitle text-sm">{modeLabels[currentMode]}</p>
       </div>
 
       {/* Progress bar */}
@@ -531,8 +531,8 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
       </div>
 
       {/* Flashcard */}
-      <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden">
-        <div className="p-8 text-center bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
+      <div className="panel overflow-hidden">
+        <div className="p-8 text-center bg-gradient-to-r from-[#1e3a8a] to-[#0f766e] text-white">
           {/* Prompt: what to show before reveal */}
           {!showAnswer ? (
             currentMode === 'word' ? (
@@ -608,7 +608,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                         <button
                           key={opt}
                           onClick={() => { setSelectedChoice(opt); setShowAnswer(true); }}
-                          className={`px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-indigo-100 hover:text-indigo-700 transition-colors text-left ${
+                        className={`px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-indigo-100 hover:text-indigo-700 transition-colors text-left ${
                             currentMode === 'word' ? 'line-clamp-2' : ''
                           }`}
                           title={currentMode === 'word' && opt.length > 60 ? opt : undefined}
@@ -623,7 +623,7 @@ export default function ReviewTest({ onReviewComplete }: ReviewTestProps) {
                     <p className="text-slate-400 mb-6">Not enough words for choices. Compare with your recall:</p>
                     <button
                       onClick={() => setShowAnswer(true)}
-                      className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
+                      className="px-8 py-3 btn-primary text-white rounded-xl font-semibold transition-colors"
                     >
                       Show Answer
                     </button>

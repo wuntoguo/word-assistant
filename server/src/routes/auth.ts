@@ -2,16 +2,36 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { findUserByProvider, createUser, findUserById, findUserByEmail } from '../db.js';
+import { findUserByProvider, createUser, findUserById, findUserByEmail, findAnyUserByEmail } from '../repositories/userRepo.js';
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET is required in production');
+}
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'dev-secret';
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  if (!email || email.length > 254) return false;
+  const normalized = normalizeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return false;
+  const [localPart, domain] = normalized.split('@');
+  if (!localPart || !domain) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.') || localPart.includes('..')) return false;
+  if (domain.startsWith('-') || domain.endsWith('-') || domain.includes('..')) return false;
+  if (!domain.includes('.')) return false;
+  return true;
+}
 
 // Helper: issue JWT
 function issueToken(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ userId }, EFFECTIVE_JWT_SECRET, { expiresIn: '30d' });
 }
 
 // Middleware: verify JWT and attach userId to req
@@ -23,7 +43,7 @@ export function authMiddleware(req: Request, res: Response, next: () => void) {
   }
 
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as { userId: string };
+    const payload = jwt.verify(header.slice(7), EFFECTIVE_JWT_SECRET) as { userId: string };
     (req as any).userId = payload.userId;
     next();
   } catch {
@@ -39,7 +59,7 @@ export function optionalAuthMiddleware(req: Request, _res: Response, next: () =>
     return;
   }
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as { userId: string };
+    const payload = jwt.verify(header.slice(7), EFFECTIVE_JWT_SECRET) as { userId: string };
     (req as any).userId = payload.userId;
   } catch {
     // ignore invalid token
@@ -49,10 +69,19 @@ export function optionalAuthMiddleware(req: Request, _res: Response, next: () =>
 
 // ==================== Google OAuth ====================
 
+authRouter.get('/providers', (_req: Request, res: Response) => {
+  res.json({
+    email: true,
+    google: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    github: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+  });
+});
+
 // Step 1: Redirect to Google
 authRouter.get('/google', (_req: Request, res: Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) {
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
     res.status(500).json({ error: 'Google OAuth not configured' });
     return;
   }
@@ -73,6 +102,10 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
   }
 
   try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      res.status(500).json({ error: 'Google OAuth not configured' });
+      return;
+    }
     const redirectUri = `${APP_URL}/api/auth/google/callback`;
 
     // Exchange code for tokens
@@ -98,16 +131,29 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
-    const profile = await userRes.json() as { id: string; email: string; name: string; picture: string };
+    const profile = await userRes.json() as { id: string; email?: string; name?: string; picture?: string };
+    if (!profile.id || !profile.email || !isValidEmail(profile.email)) {
+      res.status(400).json({ error: 'Google account email is unavailable or invalid' });
+      return;
+    }
+    const normalizedEmail = normalizeEmail(profile.email);
 
     // Find or create user
     let user = findUserByProvider('google', profile.id);
     if (!user) {
+      const existingByEmail = findAnyUserByEmail(normalizedEmail);
+      if (existingByEmail) {
+        // Single-user-account policy: same verified email maps to one user,
+        // regardless of OAuth provider.
+        user = existingByEmail;
+      }
+    }
+    if (!user) {
       user = createUser({
         id: uuidv4(),
-        email: profile.email,
-        name: profile.name,
-        avatar_url: profile.picture,
+        email: normalizedEmail,
+        name: (profile.name || normalizedEmail.split('@')[0]).trim(),
+        avatar_url: profile.picture || null,
         provider: 'google',
         provider_id: profile.id,
         password_hash: null,
@@ -194,6 +240,12 @@ authRouter.get('/github/callback', async (req: Request, res: Response) => {
 
     // Find or create user
     let user = findUserByProvider('github', profile.id.toString());
+    if (!user && email) {
+      const existingByEmail = findAnyUserByEmail(email);
+      if (existingByEmail) {
+        user = existingByEmail;
+      }
+    }
     if (!user) {
       user = createUser({
         id: uuidv4(),
@@ -227,17 +279,25 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Email and password are required' });
     return;
   }
+  if (!isValidEmail(email)) {
+    res.status(400).json({ error: 'Invalid email format' });
+    return;
+  }
 
   if (password.length < 4) {
     res.status(400).json({ error: 'Password must be at least 4 characters' });
     return;
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
 
-  const existing = findUserByEmail(normalizedEmail);
+  const existing = findAnyUserByEmail(normalizedEmail);
   if (existing) {
-    res.status(409).json({ error: 'This email is already registered. Please sign in.' });
+    if (existing.provider === 'email') {
+      res.status(409).json({ error: 'This email is already registered. Please sign in.' });
+      return;
+    }
+    res.status(409).json({ error: `This email is linked to ${existing.provider}. Please use that sign-in method.` });
     return;
   }
 
@@ -271,11 +331,20 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'Email and password are required' });
     return;
   }
+  if (!isValidEmail(email)) {
+    res.status(400).json({ error: 'Invalid email format' });
+    return;
+  }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
   const user = findUserByEmail(normalizedEmail);
+  const anyUser = findAnyUserByEmail(normalizedEmail);
 
   if (!user || !user.password_hash) {
+    if (anyUser && anyUser.provider !== 'email') {
+      res.status(400).json({ error: `This email uses ${anyUser.provider} sign-in. Please continue with ${anyUser.provider}.` });
+      return;
+    }
     res.status(401).json({ error: 'Invalid email or password' });
     return;
   }

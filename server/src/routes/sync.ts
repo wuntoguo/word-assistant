@@ -1,19 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { authMiddleware } from './auth.js';
-import { getWordsByUser, getWordByUserAndWord, upsertWord, DbWord } from '../db.js';
+import { getWordsByUser, getWordByUserAndWord, upsertWord, type DbWord } from '../repositories/wordRepo.js';
 
 export const syncRouter = Router();
-
-// Ebbinghaus spaced repetition intervals (must match frontend)
-const MEMORY_INTERVALS = [1, 2, 4, 7, 15, 30];
-
-function recalculateNextReviewDate(memoryStage: number, fromDate?: string): string {
-  const days = MEMORY_INTERVALS[Math.min(memoryStage, MEMORY_INTERVALS.length - 1)];
-  const base = fromDate ? new Date(fromDate) : new Date();
-  base.setDate(base.getDate() + days);
-  return base.toISOString().split('T')[0];
-}
 
 interface ClientWord {
   id: string;
@@ -68,6 +58,12 @@ function dbToClient(dw: DbWord): ClientWord {
   };
 }
 
+function pickEarlierDate(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
+
 function mergeWord(clientWord: DbWord, serverWord: DbWord): DbWord {
   const mergedStage = Math.max(clientWord.memory_stage, serverWord.memory_stage);
   const mergedReviewCount = Math.max(clientWord.review_count, serverWord.review_count);
@@ -83,6 +79,12 @@ function mergeWord(clientWord: DbWord, serverWord: DbWord): DbWord {
     ? clientWord.archived
     : serverWord.archived;
 
+  const nextReviewDate = (() => {
+    if (clientWord.memory_stage > serverWord.memory_stage) return clientWord.next_review_date;
+    if (serverWord.memory_stage > clientWord.memory_stage) return serverWord.next_review_date;
+    return pickEarlierDate(clientWord.next_review_date, serverWord.next_review_date);
+  })();
+
   return {
     id: serverWord.id,
     user_id: serverWord.user_id,
@@ -93,7 +95,7 @@ function mergeWord(clientWord: DbWord, serverWord: DbWord): DbWord {
     definitions: JSON.stringify(clientDefs.length >= serverDefs.length ? clientDefs : serverDefs),
     examples: JSON.stringify(clientExamples.length >= serverExamples.length ? clientExamples : serverExamples),
     date_added: clientWord.date_added < serverWord.date_added ? clientWord.date_added : serverWord.date_added,
-    next_review_date: recalculateNextReviewDate(mergedStage),
+    next_review_date: nextReviewDate,
     review_count: mergedReviewCount,
     memory_stage: mergedStage,
     archived,
@@ -112,8 +114,6 @@ syncRouter.post('/sync', authMiddleware, (req: Request, res: Response) => {
   const now = new Date().toISOString();
 
   // Process client words: merge each with server state
-  const processedClientWordNames = new Set<string>();
-
   for (const cw of clientWords || []) {
     const dbClientWord = clientToDb(cw, userId);
     const existingServer = getWordByUserAndWord(userId, dbClientWord.word);
@@ -126,7 +126,6 @@ syncRouter.post('/sync', authMiddleware, (req: Request, res: Response) => {
       const merged = mergeWord(dbClientWord, existingServer);
       upsertWord(merged);
     }
-    processedClientWordNames.add(dbClientWord.word);
   }
 
   // Get all server words updated since lastSyncedAt (to send back to client)

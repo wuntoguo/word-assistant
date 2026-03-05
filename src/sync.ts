@@ -13,6 +13,12 @@ import {
 import { syncWords, fetchCurrentUser } from './api';
 import { Word } from './types';
 
+function pickEarlierDate(a: string, b: string): string {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
+
 function mergeServerWords(localWords: Word[], serverWords: Word[]): Word[] {
   const wordMap = new Map<string, Word>();
 
@@ -37,7 +43,11 @@ function mergeServerWords(localWords: Word[], serverWords: Word[]): Word[] {
         id: local.id,
         memoryStage: Math.max(local.memoryStage, sw.memoryStage),
         reviewCount: Math.max(local.reviewCount, sw.reviewCount),
-        nextReviewDate: sw.nextReviewDate,
+        nextReviewDate: local.memoryStage > sw.memoryStage
+          ? local.nextReviewDate
+          : sw.memoryStage > local.memoryStage
+            ? sw.nextReviewDate
+            : pickEarlierDate(local.nextReviewDate, sw.nextReviewDate),
         dateAdded: local.dateAdded < sw.dateAdded ? local.dateAdded : sw.dateAdded,
         definitions: local.definitions.length >= sw.definitions.length ? local.definitions : sw.definitions,
         examples: local.examples.length >= sw.examples.length ? local.examples : sw.examples,
@@ -45,7 +55,7 @@ function mergeServerWords(localWords: Word[], serverWords: Word[]): Word[] {
         audioUrl: local.audioUrl || sw.audioUrl,
         partOfSpeech: local.partOfSpeech || sw.partOfSpeech,
         archived,
-        updatedAt: sw.updatedAt,
+        updatedAt: (local.updatedAt || '') > (sw.updatedAt || '') ? local.updatedAt : sw.updatedAt,
       });
     }
   }

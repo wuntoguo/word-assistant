@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import { v4 as uuidv4 } from 'uuid';
-import { getArticleByUrl, upsertArticle } from './db.js';
+import { getArticleByUrl, upsertArticle } from './repositories/articleRepo.js';
 
 const parser = new Parser({ timeout: 10000 });
 const YAHOO_RSS_URL =
@@ -25,24 +25,75 @@ const DIFFICULTY_PROMPTS: Record<string, string> = {
   B2: 'CEFR B2 (upper-intermediate): IELTS band 6 level. Moderate complexity. Standard vocabulary.',
 };
 
+const SIMPLIFY_CHARS_PER_CHUNK = 2200;
+const MAX_SIMPLIFY_CHUNKS = 8;
+
+function splitForSimplify(text: string): string[] {
+  const cleaned = text.replace(/\r\n/g, '\n').trim();
+  if (cleaned.length <= SIMPLIFY_CHARS_PER_CHUNK) return [cleaned];
+
+  const paragraphs = cleaned.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let current = '';
+  for (const p of paragraphs) {
+    const next = current ? `${current}\n\n${p}` : p;
+    if (next.length <= SIMPLIFY_CHARS_PER_CHUNK) {
+      current = next;
+      continue;
+    }
+    if (current) chunks.push(current);
+    if (p.length <= SIMPLIFY_CHARS_PER_CHUNK) {
+      current = p;
+      continue;
+    }
+    for (let i = 0; i < p.length; i += SIMPLIFY_CHARS_PER_CHUNK) {
+      chunks.push(p.slice(i, i + SIMPLIFY_CHARS_PER_CHUNK));
+    }
+    current = '';
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function simplifyChunk(openai: OpenAI, chunk: string, levelHint: string): Promise<string> {
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `Rewrite this text for ${levelHint}. Keep meaning exactly the same.
+- Do NOT omit or add facts.
+- Keep names, numbers, dates, percentages, and entities unchanged.
+- Keep paragraph structure close to original.
+- Use simpler words and shorter sentences only.
+- Output ONLY rewritten text.`,
+      },
+      { role: 'user', content: chunk },
+    ],
+    max_tokens: 1200,
+  });
+  const out = completion.choices[0]?.message?.content?.trim() || '';
+  if (!out) return chunk;
+  const inWords = chunk.split(/\s+/).filter(Boolean).length;
+  const outWords = out.split(/\s+/).filter(Boolean).length;
+  if (outWords < Math.max(40, Math.floor(inWords * 0.45))) return chunk;
+  return out;
+}
+
 async function simplifyWithGPT(text: string, targetLevel?: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || text.length < 50) return text;
   const openai = new OpenAI({ apiKey });
   const levelHint = targetLevel ? DIFFICULTY_PROMPTS[targetLevel] || '' : 'IELTS Reading band 6 (intermediate, B2)';
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an English teaching assistant. Rewrite the given text for ${levelHint}. Keep same meaning and structure. Output ONLY the rewritten text.`,
-        },
-        { role: 'user', content: text.slice(0, 4000) },
-      ],
-      max_tokens: 1500,
-    });
-    return completion.choices[0]?.message?.content?.trim() || text;
+    const chunks = splitForSimplify(text);
+    const toSimplify = chunks.slice(0, MAX_SIMPLIFY_CHUNKS);
+    const rewritten: string[] = [];
+    for (const chunk of toSimplify) {
+      rewritten.push(await simplifyChunk(openai, chunk, levelHint));
+    }
+    if (chunks.length > MAX_SIMPLIFY_CHUNKS) rewritten.push(...chunks.slice(MAX_SIMPLIFY_CHUNKS));
+    return rewritten.join('\n\n').trim() || text;
   } catch {
     return text;
   }
@@ -91,6 +142,16 @@ const DIFFICULTY_SCORES: Record<string, number> = {
   A1: 10, A2: 25, B1: 41, B2: 56, C1: 71, C2: 86,
 };
 
+function normalizePubDate(rawPubDate?: string | null, rawIsoDate?: string | null): string {
+  const candidates = [rawIsoDate, rawPubDate];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
 export async function runInit(targetCount = 20): Promise<{
   ingested: number;
   skipped: number;
@@ -120,6 +181,8 @@ export async function runInit(targetCount = 20): Promise<{
     }
 
     let content = '';
+    let contentSource: 'readability' | 'rss_fallback' = 'readability';
+    let crawlError: string | null = null;
     try {
       const dom = await JSDOM.fromURL(url, {
         pretendToBeVisual: true,
@@ -130,6 +193,8 @@ export async function runInit(targetCount = 20): Promise<{
       const parsed = reader.parse();
       content = parsed?.textContent?.trim() || item.contentSnippet || item.content || item.description || '';
     } catch (e) {
+      contentSource = 'rss_fallback';
+      crawlError = 'fetch_failed';
       content = stripHtml(item.contentSnippet || item.content || item.description || '');
       if (content.length < 100) {
         errors.push(`${item.title}: fetch failed`);
@@ -143,7 +208,7 @@ export async function runInit(targetCount = 20): Promise<{
     }
 
     const title = item.title || 'Untitled';
-    const pubDate = (item.pubDate || new Date().toISOString()).split('T')[0];
+    const pubDate = normalizePubDate(item.pubDate || null, (item as any).isoDate || null);
     const sourceName = (item as any).creator || 'Yahoo Finance';
 
     const parentId = uuidv4();
@@ -164,6 +229,10 @@ export async function runInit(targetCount = 20): Promise<{
       difficulty_score_simplified: null,
       pub_date: pubDate,
       source_name: sourceName,
+      fulltext_status: contentSource === 'readability' ? 'success' : 'failed',
+      content_source: contentSource,
+      content_len: content.length,
+      crawl_error: crawlError,
     });
     ingested++;
 
@@ -189,6 +258,10 @@ export async function runInit(targetCount = 20): Promise<{
         difficulty_score_simplified: score,
         pub_date: pubDate,
         source_name: sourceName,
+        fulltext_status: contentSource === 'readability' ? 'success' : 'failed',
+        content_source: contentSource,
+        content_len: content.length,
+        crawl_error: crawlError,
       });
       ingested++;
     }
@@ -218,6 +291,8 @@ export async function runDailyIngest(): Promise<{ ingested: number; skipped: num
     }
 
     let content = '';
+    let contentSource: 'readability' | 'rss_fallback' = 'readability';
+    let crawlError: string | null = null;
     try {
       const dom = await JSDOM.fromURL(url, {
         pretendToBeVisual: true,
@@ -228,6 +303,8 @@ export async function runDailyIngest(): Promise<{ ingested: number; skipped: num
       const parsed = reader.parse();
       content = parsed?.textContent?.trim() || item.contentSnippet || item.content || item.description || '';
     } catch {
+      contentSource = 'rss_fallback';
+      crawlError = 'fetch_failed';
       content = stripHtml(item.contentSnippet || item.content || item.description || '');
     }
 
@@ -237,7 +314,7 @@ export async function runDailyIngest(): Promise<{ ingested: number; skipped: num
     }
 
     const title = item.title || 'Untitled';
-    const pubDate = item.pubDate || new Date().toISOString();
+    const pubDate = normalizePubDate(item.pubDate || null, (item as any).isoDate || null);
     const sourceName = (item as any).creator || 'Yahoo Finance';
 
     const simplified = openai ? await simplifyWithGPT(content) : content;
@@ -279,8 +356,12 @@ export async function runDailyIngest(): Promise<{ ingested: number; skipped: num
       difficulty_simplified: diffSimplified,
       difficulty_score_original: scoreOriginal,
       difficulty_score_simplified: scoreSimplified,
-      pub_date: pubDate.split('T')[0],
+      pub_date: pubDate,
       source_name: sourceName,
+      fulltext_status: contentSource === 'readability' ? 'success' : 'failed',
+      content_source: contentSource,
+      content_len: content.length,
+      crawl_error: crawlError,
     });
     ingested++;
   }

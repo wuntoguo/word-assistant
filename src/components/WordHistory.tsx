@@ -51,14 +51,14 @@ export default function WordHistory() {
 
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="content-wrap">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Word History</h1>
-        <p className="text-slate-500">Review your vocabulary progress week by week</p>
+        <h1 className="page-title mb-2">Word History</h1>
+        <p className="page-subtitle">Review your vocabulary progress week by week</p>
       </div>
 
       {/* Week navigation */}
-      <div className="flex items-center justify-between mb-6 bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+      <div className="panel flex items-center justify-between mb-6 p-4">
         <button
           onClick={() => setWeekOffset((prev) => prev - 1)}
           className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
@@ -70,7 +70,7 @@ export default function WordHistory() {
 
         <div className="text-center">
           <div className="font-semibold text-slate-800">{weekRange.label}</div>
-          <div className="text-sm text-slate-400">
+          <div className="text-sm page-subtitle">
             {weekWords.length} word{weekWords.length !== 1 ? 's' : ''} this week
           </div>
         </div>
@@ -91,7 +91,7 @@ export default function WordHistory() {
         <div className="flex justify-end mb-4">
           <button
             onClick={() => exportToCSV(weekWords)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 btn-ghost rounded-lg text-sm font-medium transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -103,9 +103,9 @@ export default function WordHistory() {
 
       {/* Word list grouped by date */}
       {groupedByDate.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+        <div className="panel p-12 text-center">
           <div className="text-5xl mb-4">&#128214;</div>
-          <p className="text-slate-500">No words recorded this week.</p>
+          <p className="page-subtitle">No words recorded this week.</p>
           <p className="text-sm text-slate-400 mt-1">Start looking up words to build your vocabulary!</p>
         </div>
       ) : (
@@ -120,10 +120,7 @@ export default function WordHistory() {
               </h3>
               <div className="space-y-2">
                 {dateWords.map((w) => (
-                  <div
-                    key={w.id}
-                    className="bg-white rounded-xl border border-slate-100 p-3 hover:shadow-sm transition-shadow flex items-center"
-                  >
+                  <div key={w.id} className="panel rounded-xl p-3 hover:shadow-md transition-shadow flex items-center">
                     <button
                       onClick={() => navigate(`/learn?word=${encodeURIComponent(w.word)}`)}
                       className="flex-1 min-w-0 flex items-center gap-3 text-left hover:text-indigo-600 transition-colors"
@@ -161,24 +158,24 @@ export default function WordHistory() {
 
       {/* All words stats */}
       {activeWords.length > 0 && (
-        <div className="mt-8 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+        <div className="mt-8 panel p-6">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Overall Statistics</h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-slate-800">{activeWords.length}</div>
-              <div className="text-sm text-slate-500">Active Words</div>
+              <div className="text-sm page-subtitle">Active Words</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-emerald-600">
                 {activeWords.filter((w) => w.memoryStage >= 4).length}
               </div>
-              <div className="text-sm text-slate-500">Mastered</div>
+              <div className="text-sm page-subtitle">Mastered</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-indigo-600">
                 {activeWords.filter((w) => !w.archived && w.nextReviewDate <= new Date().toISOString().split('T')[0]).length}
               </div>
-              <div className="text-sm text-slate-500">Due Today</div>
+              <div className="text-sm page-subtitle">Due Today</div>
             </div>
           </div>
 
@@ -214,7 +211,7 @@ export default function WordHistory() {
               {archivedWords.map((w) => (
                 <div
                   key={w.id}
-                  className="bg-slate-50 rounded-xl border border-slate-100 p-3 opacity-70 flex items-center"
+                  className="panel rounded-xl p-3 opacity-80 flex items-center"
                 >
                   <button
                     onClick={() => navigate(`/learn?word=${encodeURIComponent(w.word)}`)}

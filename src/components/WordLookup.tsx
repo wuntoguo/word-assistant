@@ -78,10 +78,10 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
 
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="content-wrap">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Word Lookup</h1>
-        <p className="text-slate-500">Search any English word to see its pronunciation, definition, and examples</p>
+        <h1 className="page-title mb-2">Word Lookup</h1>
+        <p className="page-subtitle">Search any English word to see its pronunciation, definition, and examples</p>
       </div>
 
       {/* Search bar */}
@@ -98,7 +98,7 @@ export default function WordLookup({ onWordAdded }: WordLookupProps) {
         <button
           onClick={() => handleSearch()}
           disabled={loading || !searchTerm.trim()}
-          className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+          className="px-6 py-3 btn-primary text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
           {loading ? (
             <span className="inline-flex items-center gap-2">

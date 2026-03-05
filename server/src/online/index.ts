@@ -16,9 +16,12 @@ import { levelRouter } from '../routes/level.js';
 import { recommendRouter } from '../routes/recommend.js';
 import { vocabStoryRouter } from '../routes/vocabStory.js';
 import { profileRouter } from '../routes/profile.js';
+import { eventsRouter } from '../routes/events.js';
 import { cronRouter } from '../routes/cron.js';
 import { adminRouter } from '../routes/admin.js';
 import { metricsMiddleware } from '../middleware/metrics.js';
+import { getArticleCountByDay, getArticlesForRecommendation } from '../repositories/articleRepo.js';
+import { getCrawlReports } from '../repositories/crawlReportRepo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,9 +33,8 @@ export function setupOnlineRoutes(app: Express): void {
   });
 
   // Public debug for recommend flow (no auth - aggregate stats only)
-  app.get('/api/debug/recommend', async (_req, res) => {
+  app.get('/api/debug/recommend', (_req, res) => {
     try {
-      const { getArticleCountByDay, getArticlesForRecommendation, getCrawlReports } = await import('../db.js');
       const today = new Date().toISOString().split('T')[0];
       const articlesByDay = getArticleCountByDay(7);
       const recentReports = getCrawlReports(5);
@@ -74,6 +76,7 @@ export function setupOnlineRoutes(app: Express): void {
   app.use('/api/recommend', recommendRouter);
   app.use('/api/vocab-story', vocabStoryRouter);
   app.use('/api/profile', profileRouter);
+  app.use('/api/events', eventsRouter);
   app.use('/api/cron', cronRouter);
   app.use('/api/admin', adminRouter);
 

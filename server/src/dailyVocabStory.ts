@@ -1,11 +1,8 @@
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  getWordsFromLastNDays,
-  insertVocabStoryArticle,
-  getActiveUserIds,
-  hasVocabStoryToday,
-} from './db.js';
+import { getWordsFromLastNDays } from './repositories/wordRepo.js';
+import { getActiveUserIds } from './repositories/userRepo.js';
+import { getVocabStoryTodayCount, insertVocabStoryArticle } from './repositories/articleRepo.js';
 
 const SYSTEM_PROMPT = `You are a creative English teacher writing short stories to help learners remember new vocabulary.
 
@@ -36,7 +33,38 @@ async function generateStoryWithGPT(openai: OpenAI, words: { word: string; defin
   return completion.choices[0]?.message?.content?.trim() || '';
 }
 
+function buildWordsForStory(words: ReturnType<typeof getWordsFromLastNDays>, variant = 0): { word: string; definitions?: string }[] {
+  const wordsForStory = words.slice(0, 18).map((w) => {
+    let def: string | undefined;
+    try {
+      const arr = JSON.parse(w.definitions) as string[];
+      def = arr?.[0]?.slice(0, 80);
+    } catch {
+      //
+    }
+    return { word: w.word, definitions: def };
+  });
+
+  if (wordsForStory.length <= 12) return wordsForStory.slice(0, 12);
+
+  const shift = (variant * 4) % wordsForStory.length;
+  const rotated = [...wordsForStory.slice(shift), ...wordsForStory.slice(0, shift)];
+  return rotated.slice(0, 12);
+}
+
 export async function generateVocabStoryForUser(userId: string): Promise<{
+  ok: boolean;
+  id?: string;
+  title?: string;
+  error?: string;
+}> {
+  return generateVocabStoryForUserWithWords(userId, buildWordsForStory(getWordsFromLastNDays(userId, 7), 0));
+}
+
+async function generateVocabStoryForUserWithWords(
+  userId: string,
+  wordsForStory: { word: string; definitions?: string }[]
+): Promise<{
   ok: boolean;
   id?: string;
   title?: string;
@@ -47,21 +75,7 @@ export async function generateVocabStoryForUser(userId: string): Promise<{
     return { ok: false, error: 'OPENAI_API_KEY not configured' };
   }
 
-  const words = getWordsFromLastNDays(userId, 7);
-  if (words.length < 3) {
-    return { ok: false, error: `Need at least 3 words (got ${words.length})` };
-  }
-
-  const wordsForStory = words.slice(0, 12).map((w) => {
-    let def: string | undefined;
-    try {
-      const arr = JSON.parse(w.definitions) as string[];
-      def = arr?.[0]?.slice(0, 80);
-    } catch {
-      //
-    }
-    return { word: w.word, definitions: def };
-  });
+  if (wordsForStory.length < 3) return { ok: false, error: `Need at least 3 words (got ${wordsForStory.length})` };
 
   try {
     const openai = new OpenAI({ apiKey });
@@ -110,21 +124,28 @@ export async function runDailyVocabStoryGeneration(options?: { userId?: string }
   const errors: string[] = [];
 
   for (const userId of userIds) {
-    if (hasVocabStoryToday(userId)) {
-      skipped++;
-      continue;
-    }
     const words = getWordsFromLastNDays(userId, 7);
     if (words.length < 3) {
       skipped++;
       continue;
     }
-    const result = await generateVocabStoryForUser(userId);
-    if (result.ok) {
-      generated++;
-      console.log(`[DailyVocabStory] Generated for ${userId}: ${result.title}`);
-    } else {
-      errors.push(`${userId}: ${result.error}`);
+    const existingToday = getVocabStoryTodayCount(userId);
+    const targetToday = words.length >= 8 ? 3 : 2;
+    const need = Math.max(0, targetToday - existingToday);
+    if (need === 0) {
+      skipped++;
+      continue;
+    }
+
+    for (let i = 0; i < need; i++) {
+      const wordsForStory = buildWordsForStory(words, existingToday + i);
+      const result = await generateVocabStoryForUserWithWords(userId, wordsForStory);
+      if (result.ok) {
+        generated++;
+        console.log(`[DailyVocabStory] Generated for ${userId}: ${result.title}`);
+      } else {
+        errors.push(`${userId}: ${result.error}`);
+      }
     }
   }
 

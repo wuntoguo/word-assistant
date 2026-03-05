@@ -8,28 +8,32 @@
 import OpenAI from 'openai';
 import {
   buildUserProfile,
+  buildUserProfileWithOptions,
   buildRecommendationReason,
   type UserProfile,
-  type ScoredArticle,
 } from './recommendation.js';
 import {
   getArticleById,
   getArticlesForRecommendation,
-  getFeedbackByUser,
+  getArticleIdsCreatedSincePage,
+} from './repositories/articleRepo.js';
+import {
   getArticleEmbedding,
-  upsertArticleEmbedding,
   getUserEmbedding,
   upsertUserEmbedding,
   getUserTopArticles,
   upsertUserTopArticle,
   pruneUserTopArticles,
-  getArticleIdsCreatedSince,
-  getActiveUserIds,
-} from './db.js';
+} from './repositories/recommendCacheRepo.js';
+import { getFeedbackByUser } from './repositories/feedbackRepo.js';
+import { getActiveUserIds, getActiveUserIdsPage } from './repositories/userRepo.js';
 
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const DIFFICULTY_ORDER = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const TOP_N = 100;
+const PRECOMPUTE_USER_PAGE_SIZE = Math.max(1, parseInt(process.env.PRECOMPUTE_USER_PAGE_SIZE || '50', 10));
+const PRECOMPUTE_ARTICLE_CHUNK_SIZE = Math.max(1, parseInt(process.env.PRECOMPUTE_ARTICLE_CHUNK_SIZE || '100', 10));
+const PRECOMPUTE_FEEDBACK_LIMIT = Math.max(50, parseInt(process.env.PRECOMPUTE_FEEDBACK_LIMIT || '200', 10));
 
 async function getEmbedding(openai: OpenAI, text: string): Promise<number[]> {
   if (!text?.trim()) return [];
@@ -63,22 +67,9 @@ function computeDifficultyScore(userLevel: string, articleLevel: string): { scor
   return { score: scores[gap] ?? 50, reason: `User ${userLevel}, Article ${articleLevel}` };
 }
 
-async function getOrCreateArticleEmbedding(openai: OpenAI, articleId: string): Promise<number[] | null> {
-  let emb = getArticleEmbedding(articleId);
-  if (emb && emb.length > 0) return emb;
-  const article = getArticleById(articleId);
-  if (!article) return null;
-  const keywords = (() => {
-    try {
-      return (JSON.parse(article.keywords) as string[]) || [];
-    } catch {
-      return [];
-    }
-  })();
-  const text = [article.title, keywords.join(', '), (article.simplified_content || article.content || '').slice(0, 500)].filter(Boolean).join(' ');
-  emb = await getEmbedding(openai, `Article: ${text}`);
-  if (emb.length > 0) upsertArticleEmbedding(articleId, emb);
-  return emb;
+function getPrecomputedArticleEmbedding(articleId: string): number[] | null {
+  const emb = getArticleEmbedding(articleId);
+  return emb && emb.length > 0 ? emb : null;
 }
 
 async function getOrCreateUserEmbedding(openai: OpenAI, userId: string, profile: UserProfile): Promise<number[]> {
@@ -101,26 +92,37 @@ export async function runUserEmbeddingRefresh(): Promise<{ usersProcessed: numbe
   if (!apiKey) return { usersProcessed: 0, refreshed: 0 };
 
   const openai = new OpenAI({ apiKey });
-  const userIds = getActiveUserIds(14);
+  let offset = 0;
+  let usersProcessed = 0;
   let refreshed = 0;
 
-  for (const userId of userIds) {
-    const profile = buildUserProfile(userId);
-    const interests = profile.interestKeywords.join(', ');
-    const hash = interests.slice(0, 200);
-    const text = interests.trim() ? `User interests: ${interests}` : '';
-    const emb = text ? await getEmbedding(openai, text) : [];
-    if (emb.length > 0) {
-      upsertUserEmbedding(userId, emb, hash);
-      refreshed++;
+  while (true) {
+    const userIds = getActiveUserIdsPage(14, PRECOMPUTE_USER_PAGE_SIZE, offset);
+    if (userIds.length === 0) break;
+    usersProcessed += userIds.length;
+
+    for (const userId of userIds) {
+      const profile = buildUserProfileWithOptions(userId, { includeArticleBuckets: false });
+      const interests = profile.interestKeywords.join(', ');
+      const hash = interests.slice(0, 200);
+      const cached = getUserEmbedding(userId);
+      if (cached && cached.interestsHash === hash && cached.embedding.length > 0) {
+        continue;
+      }
+      const text = interests.trim() ? `User interests: ${interests}` : '';
+      const emb = text ? await getEmbedding(openai, text) : [];
+      if (emb.length > 0) {
+        upsertUserEmbedding(userId, emb, hash);
+        refreshed++;
+      }
     }
+    offset += userIds.length;
   }
 
-  return { usersProcessed: userIds.length, refreshed };
+  return { usersProcessed, refreshed };
 }
 
 async function scoreArticle(
-  openai: OpenAI,
   articleId: string,
   profile: UserProfile,
   userEmb: number[]
@@ -131,7 +133,7 @@ async function scoreArticle(
   const articleDiff = article.difficulty_simplified || article.difficulty_original || 'B1';
   const { score: difficultyScore, reason: difficultyReason } = computeDifficultyScore(profile.levelBand, articleDiff);
 
-  const articleEmb = await getOrCreateArticleEmbedding(openai, articleId);
+  const articleEmb = getPrecomputedArticleEmbedding(articleId);
   const interestScore = articleEmb && userEmb.length
     ? Math.round(Math.max(0, Math.min(100, (cosineSimilarity(userEmb, articleEmb) + 1) * 50)))
     : 50;
@@ -163,40 +165,61 @@ async function scoreArticle(
 }
 
 /** Incremental: score new articles for each user, merge into top 100 */
-export async function runIncrementalPrecompute(newArticleIds: string[]): Promise<{ usersProcessed: number; articlesScored: number }> {
+export async function runIncrementalPrecompute(daysBack = 3): Promise<{ usersProcessed: number; articlesScored: number; newArticleIds: number }> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || newArticleIds.length === 0) return { usersProcessed: 0, articlesScored: 0 };
+  if (!apiKey) return { usersProcessed: 0, articlesScored: 0, newArticleIds: 0 };
 
   const openai = new OpenAI({ apiKey });
-  const userIds = getActiveUserIds(14);
+  let usersProcessed = 0;
   let articlesScored = 0;
+  let newArticleIds = 0;
+  const activeCount = getActiveUserIds(14).length;
+  const since = new Date();
+  since.setDate(since.getDate() - daysBack);
+  const sinceStr = since.toISOString().split('T')[0];
+  let offset = 0;
 
-  for (const userId of userIds) {
-    const profile = buildUserProfile(userId);
-    const userEmb = await getOrCreateUserEmbedding(openai, userId, profile);
-    const feedbacks = getFeedbackByUser(userId, 500);
-    const seenKeys = new Set(feedbacks.map((f) => f.article_key));
+  while (true) {
+    const userIds = getActiveUserIdsPage(14, PRECOMPUTE_USER_PAGE_SIZE, offset);
+    if (userIds.length === 0) break;
+    usersProcessed += userIds.length;
 
-    for (const articleId of newArticleIds) {
-      const article = getArticleById(articleId);
-      if (!article || seenKeys.has(article.source_url)) continue;
-      if (article.is_vocab_story) continue; // Personalized per user, never score for others
+    for (const userId of userIds) {
+      const profile = buildUserProfileWithOptions(userId, { includeArticleBuckets: false });
+      const userEmb = await getOrCreateUserEmbedding(openai, userId, profile);
+      const feedbacks = getFeedbackByUser(userId, PRECOMPUTE_FEEDBACK_LIMIT);
+      const seenKeys = new Set(feedbacks.map((f) => f.article_key));
+      let articleOffset = 0;
+      while (true) {
+        const articleIds = getArticleIdsCreatedSincePage(sinceStr, PRECOMPUTE_ARTICLE_CHUNK_SIZE, articleOffset);
+        if (articleIds.length === 0) break;
+        if (usersProcessed === 1) newArticleIds += articleIds.length;
+        for (const articleId of articleIds) {
+          const article = getArticleById(articleId);
+          if (!article || seenKeys.has(article.source_url)) continue;
+          if (article.is_vocab_story) continue; // Personalized per user, never score for others
 
-      const articleDiff = article.difficulty_simplified || article.difficulty_original || 'B1';
-      const userIdx = DIFFICULTY_ORDER.indexOf(profile.levelBand);
-      const articleIdx = DIFFICULTY_ORDER.indexOf(articleDiff);
-      if (userIdx >= 0 && articleIdx >= 0 && articleIdx - userIdx > 2) continue;
+          const articleDiff = article.difficulty_simplified || article.difficulty_original || 'B1';
+          const userIdx = DIFFICULTY_ORDER.indexOf(profile.levelBand);
+          const articleIdx = DIFFICULTY_ORDER.indexOf(articleDiff);
+          if (userIdx >= 0 && articleIdx >= 0 && articleIdx - userIdx > 2) continue;
 
-      const s = await scoreArticle(openai, articleId, profile, userEmb);
-      if (s && s.totalScore > 0) {
-        upsertUserTopArticle(userId, articleId, s);
-        articlesScored++;
+          const s = await scoreArticle(articleId, profile, userEmb);
+          if (s && s.totalScore > 0) {
+            upsertUserTopArticle(userId, articleId, s);
+            articlesScored++;
+          }
+        }
+        articleOffset += articleIds.length;
       }
+      pruneUserTopArticles(userId, TOP_N);
     }
-    pruneUserTopArticles(userId, TOP_N);
+    offset += userIds.length;
+    const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    console.log(`[Precompute] processed users=${usersProcessed}/${activeCount}, rss=${rssMb}MB`);
   }
 
-  return { usersProcessed: userIds.length, articlesScored };
+  return { usersProcessed, articlesScored, newArticleIds };
 }
 
 /** Full precompute: for users with no cache, score all candidates and populate */
@@ -219,7 +242,7 @@ export async function runFullPrecomputeForUser(userId: string): Promise<number> 
     const articleIdx = DIFFICULTY_ORDER.indexOf(article.difficulty_simplified || article.difficulty_original || 'B1');
     if (userIdx >= 0 && articleIdx >= 0 && articleIdx - userIdx > 2) continue;
 
-    const s = await scoreArticle(openai, article.id, profile, userEmb);
+    const s = await scoreArticle(article.id, profile, userEmb);
     if (s && s.totalScore > 0) {
       upsertUserTopArticle(userId, article.id, s);
       scored++;

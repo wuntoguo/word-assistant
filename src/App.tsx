@@ -59,14 +59,14 @@ function SyncStatusIndicator() {
 
 function LearnLayout() {
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex gap-2 mb-6 border-b border-slate-200 pb-2 overflow-x-auto">
+    <div className="content-wrap">
+      <div className="panel p-2 mb-6 flex gap-2 overflow-x-auto">
         <NavLink
           to="/learn"
           end
           className={({ isActive }) =>
-            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            `nav-pill px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+              isActive ? 'active' : 'hover:bg-white'
             }`
           }
         >
@@ -75,8 +75,8 @@ function LearnLayout() {
         <NavLink
           to="/learn/review"
           className={({ isActive }) =>
-            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors relative ${
-              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            `nav-pill px-4 py-2 text-sm whitespace-nowrap transition-colors relative ${
+              isActive ? 'active' : 'hover:bg-white'
             }`
           }
         >
@@ -85,8 +85,8 @@ function LearnLayout() {
         <NavLink
           to="/learn/history"
           className={({ isActive }) =>
-            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            `nav-pill px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+              isActive ? 'active' : 'hover:bg-white'
             }`
           }
         >
@@ -95,8 +95,8 @@ function LearnLayout() {
         <NavLink
           to="/learn/weekly-test"
           className={({ isActive }) =>
-            `px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+            `nav-pill px-4 py-2 text-sm whitespace-nowrap transition-colors ${
+              isActive ? 'active' : 'hover:bg-white'
             }`
           }
         >
@@ -108,6 +108,50 @@ function LearnLayout() {
   );
 }
 
+function MobileBottomNav({ reviewCount, hasUser }: { reviewCount: number; hasUser: boolean }) {
+  return (
+    <nav className="mobile-bottom-nav md:hidden" aria-label="Primary">
+      <NavLink to="/" end className={({ isActive }) => `mobile-tab ${isActive ? 'active' : ''}`}>
+        <span className="tab-icon" aria-hidden="true">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 5h9v9M14 10l5-5M5 7h4M5 12h8M5 17h6" />
+          </svg>
+        </span>
+        <span>Discover</span>
+      </NavLink>
+      <NavLink to="/audio" className={({ isActive }) => `mobile-tab ${isActive ? 'active' : ''}`}>
+        <span className="tab-icon" aria-hidden="true">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 13v-2m4 5V8m4 8V6m4 6V8m4 4v-2" />
+          </svg>
+        </span>
+        <span>Audio</span>
+      </NavLink>
+      <NavLink to="/learn" className={({ isActive }) => `mobile-tab ${isActive ? 'active' : ''}`}>
+        {reviewCount > 0 && (
+          <span className="mobile-tab-badge">{reviewCount > 9 ? '9+' : reviewCount}</span>
+        )}
+        <span className="tab-icon" aria-hidden="true">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6.5A2.5 2.5 0 016.5 4H20v14h-13.5A2.5 2.5 0 014 15.5v-9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 8h8M8 12h6" />
+          </svg>
+        </span>
+        <span>Learn</span>
+      </NavLink>
+      <NavLink to={hasUser ? "/me" : "/login"} className={({ isActive }) => `mobile-tab ${isActive ? 'active' : ''}`}>
+        <span className="tab-icon" aria-hidden="true">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 12a4 4 0 100-8 4 4 0 000 8z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0114 0" />
+          </svg>
+        </span>
+        <span>Profile</span>
+      </NavLink>
+    </nav>
+  );
+}
+
 function AppContent() {
   const allDueWords = useAtomValue(allDueReviewWordsAtom);
   const reviewCount = allDueWords.length;
@@ -115,22 +159,22 @@ function AppContent() {
   const { triggerSync, fullSync } = useSyncEngine();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50">
+    <div className="app-shell">
       {/* Navigation: 3 main tabs */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-4">
+      <nav className="glass-nav sticky top-0 z-50">
+        <div className="page-wrap">
           <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">&#128214;</span>
-              <span className="font-bold text-slate-800 hidden sm:inline">FeedLingo</span>
+            <div className="brand">
+              <span className="brand-mark" />
+              <span className="brand-text">FeedLingo</span>
             </div>
-            <div className="flex gap-1">
+            <div className="nav-links hidden md:flex">
               <NavLink
                 to="/"
                 end
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                  `nav-pill px-3 py-1.5 text-sm transition-colors ${
+                    isActive ? 'active' : 'hover:bg-white'
                   }`
                 }
               >
@@ -139,8 +183,8 @@ function AppContent() {
               <NavLink
                 to="/audio"
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                  `nav-pill px-3 py-1.5 text-sm transition-colors ${
+                    isActive ? 'active' : 'hover:bg-white'
                   }`
                 }
               >
@@ -149,8 +193,8 @@ function AppContent() {
               <NavLink
                 to="/learn"
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors relative ${
-                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                  `nav-pill px-3 py-1.5 text-sm transition-colors relative ${
+                    isActive ? 'active' : 'hover:bg-white'
                   }`
                 }
               >
@@ -164,8 +208,8 @@ function AppContent() {
               <NavLink
                 to="/me"
                 className={({ isActive }) =>
-                  `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    isActive ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                  `nav-pill px-3 py-1.5 text-sm transition-colors ${
+                    isActive ? 'active' : 'hover:bg-white'
                   }`
                 }
               >
@@ -173,21 +217,34 @@ function AppContent() {
               </NavLink>
             </div>
             <div className="flex items-center gap-3">
-              {user && <SyncStatusIndicator />}
+              {user && <span className="hidden md:inline"><SyncStatusIndicator /></span>}
               {user ? (
-                <button
-                  onClick={fullSync}
-                  className="text-slate-400 hover:text-indigo-600 transition-colors"
-                  title="Sync now"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
+                <>
+                  <NavLink
+                    to="/me"
+                    className="btn-ghost rounded-full w-9 h-9 inline-flex items-center justify-center transition-colors shrink-0 md:hidden"
+                    title="Profile"
+                    aria-label="Open profile"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A9 9 0 1118.88 17.8M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </NavLink>
+                  <button
+                    onClick={fullSync}
+                    className="btn-ghost rounded-full w-9 h-9 hidden md:inline-flex items-center justify-center transition-colors shrink-0"
+                    title="Sync now"
+                    aria-label="Sync now"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </>
               ) : (
                 <NavLink
                   to="/login"
-                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                  className="btn-ghost px-3 rounded-lg text-xs font-semibold shrink-0"
                 >
                   Sign in
                 </NavLink>
@@ -198,9 +255,10 @@ function AppContent() {
       </nav>
 
       {/* Main content */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="page-wrap main-stage py-6 md:py-8 pb-24 md:pb-8">
         <Routes>
           <Route path="/" element={<Discovery />} />
+          <Route path="/discover" element={<Discovery />} />
           <Route path="/audio" element={<AudioChannel />} />
           <Route path="/learn" element={<LearnLayout />}>
             <Route index element={<WordLookup onWordAdded={triggerSync} />} />
@@ -209,10 +267,13 @@ function AppContent() {
             <Route path="weekly-test" element={<WeeklyTest />} />
           </Route>
           <Route path="/me" element={<ProfileStats />} />
+          <Route path="/profile" element={<ProfileStats />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth-callback" element={<AuthCallback />} />
+          <Route path="*" element={<Discovery />} />
         </Routes>
       </main>
+      <MobileBottomNav reviewCount={reviewCount} hasUser={!!user} />
     </div>
   );
 }

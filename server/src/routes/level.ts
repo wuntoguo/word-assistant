@@ -5,10 +5,10 @@ import {
   getTestResultsByUser,
   upsertArticleFeedback,
   upsertArticleFeedbackWithArticleId,
-  getSourceUrlByArticleId,
   getFeedbackByUser,
-  incrementMetric,
-} from '../db.js';
+} from '../repositories/feedbackRepo.js';
+import { getSourceUrlByArticleId } from '../repositories/articleRepo.js';
+import { incrementMetric } from '../repositories/metricsRepo.js';
 
 export const levelRouter = Router();
 

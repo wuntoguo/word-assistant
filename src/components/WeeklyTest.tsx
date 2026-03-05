@@ -83,17 +83,17 @@ export default function WeeklyTest() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto text-center py-16">
+      <div className="content-wrap text-center py-16">
         <div className="inline-block w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-slate-500">Generating weekly test…</p>
+        <p className="page-subtitle">Generating weekly test…</p>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center">
+      <div className="content-wrap">
+        <div className="panel bg-amber-50/70 border-amber-200 p-6 text-center">
           <p className="text-amber-700">{error || 'No test available'}</p>
         </div>
       </div>
@@ -101,23 +101,23 @@ export default function WeeklyTest() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">Weekly Test</h2>
+    <div className="content-wrap">
+      <h2 className="page-title mb-6 text-center">Weekly Test</h2>
 
       {step === 'article' ? (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">{data.article.title}</h3>
+          <div className="panel content-card">
+            <h3 className="article-title mb-2">{data.article.title}</h3>
             {data.article.source && (
-              <span className="text-xs text-slate-400">{data.article.source}</span>
+              <span className="meta-line source-chip">{data.article.source}</span>
             )}
-            <div className="mt-4 text-slate-700 leading-relaxed whitespace-pre-wrap">
+            <div className="mt-4 text-slate-700 leading-relaxed whitespace-pre-wrap article-text">
               {data.article.content}
             </div>
           </div>
           <button
             onClick={() => setStep('quiz')}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700"
+            className="w-full py-3 btn-primary text-white rounded-xl font-semibold"
           >
             Start quiz
           </button>
@@ -125,7 +125,7 @@ export default function WeeklyTest() {
       ) : (
         <div className="space-y-6">
           {data.questions.map((q, qIdx) => (
-            <div key={qIdx} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div key={qIdx} className="panel content-card">
               <p className="font-medium text-slate-800 mb-4">
                 {qIdx + 1}. {q.question}
               </p>
@@ -173,7 +173,7 @@ export default function WeeklyTest() {
               }
             }}
             disabled={answers.some((a) => a < 0)}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 btn-primary text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {showResult ? `Score: ${score}/${data.questions.length}` : 'Check answers'}
           </button>

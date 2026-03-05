@@ -14,11 +14,11 @@ export function getNextReviewDate(memoryStage: number): string {
   const days = MEMORY_INTERVALS[Math.min(memoryStage, MEMORY_INTERVALS.length - 1)];
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().split('T')[0];
+  return toLocalDateString(date);
 }
 
 export function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  return toLocalDateString(new Date());
 }
 
 export function getWeekRange(offsetWeeks: number = 0): { start: string; end: string; label: string } {
@@ -33,7 +33,7 @@ export function getWeekRange(offsetWeeks: number = 0): { start: string; end: str
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
 
-  const format = (d: Date) => d.toISOString().split('T')[0];
+  const format = (d: Date) => toLocalDateString(d);
   const formatDisplay = (d: Date) =>
     `${d.getMonth() + 1}/${d.getDate()}`;
 
@@ -42,6 +42,13 @@ export function getWeekRange(offsetWeeks: number = 0): { start: string; end: str
     end: format(sunday),
     label: `${formatDisplay(monday)} - ${formatDisplay(sunday)}`,
   };
+}
+
+function toLocalDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function getWordsInDateRange(words: Word[], start: string, end: string): Word[] {

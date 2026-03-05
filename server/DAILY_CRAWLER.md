@@ -3,7 +3,7 @@
 ## Overview
 
 Crawls major US news RSS feeds daily by category:
-- **Finance**: Yahoo Finance, CNN Business, NPR Business, CNBC
+- **Finance**: Yahoo Finance, CNN Business, NPR Business
 - **Tech**: CNN Tech, TechCrunch, Ars Technica, NPR Technology  
 - **Lifestyle**: CNN Health, CNN Travel, NPR Health
 - **Entertainment**: CNN Entertainment, NPR Arts, Variety
@@ -23,7 +23,7 @@ For very high-volume (10k+ articles/day), Python + Scrapy would scale better.
 
 ## Paywalled Sites
 
-WSJ, NYT, FT, Economist, Bloomberg, Barron's etc. require subscriptions for full text. These domains are **skipped** when an RSS item links to them (e.g. Yahoo Finance sometimes links to WSJ). Use free sources instead: Reuters, BBC, NPR, CNN, CNBC, Yahoo Finance.
+WSJ, NYT, FT, Economist, Bloomberg, Barron's etc. require subscriptions for full text. These domains are **skipped** when an RSS item links to them (e.g. Yahoo Finance sometimes links to WSJ). Use free sources instead: BBC, NPR, CNN, Yahoo Finance.
 
 ## Anti-Blocking & Rate Limiting
 
@@ -76,6 +76,11 @@ After each crawl, a report is:
 - `OPENAI_API_KEY` (required for GPT preprocessing)
 - `CRON_SCHEDULE` (optional, default: `0 0 * * *`)
 - `CRON_SECRET` (optional, for API trigger auth)
+- `CRAWLER_FEED_TIMEOUT_MS` (optional, default: `10000`)
+- `CRAWLER_FEED_DELAY_MS` (optional, default: `30000`, for anti-rate-limit)
+- `CRAWLER_ARTICLE_DELAY_MS` (optional, default: `3000`)
+- `CRAWLER_MAX_SOURCE_FAILURES` (optional, default: `2`, consecutive failures before cooldown)
+- `CRAWLER_SOURCE_COOLDOWN_MS` (optional, default: `86400000` = 24h)
 
 ## Related
 

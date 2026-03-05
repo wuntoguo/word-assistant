@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from './auth.js';
-import { getWordsFromLastNDays, getArticleById } from '../db.js';
+import { getWordsFromLastNDays } from '../repositories/wordRepo.js';
+import { getArticleById } from '../repositories/articleRepo.js';
 import { generateVocabStoryForUser } from '../dailyVocabStory.js';
 
 export const vocabStoryRouter = Router();

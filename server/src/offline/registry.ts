@@ -51,6 +51,20 @@ export const OFFLINE_TASKS: Record<string, OfflineTaskDef> = {
     envSchedule: 'AUDIO_CRON_SCHEDULE',
     deps: ['daily-crawl'],
   },
+  'events-daily-agg': {
+    id: 'events-daily-agg',
+    name: 'Events Daily Aggregation',
+    description: 'Aggregate raw behavior events into daily summary and item engagement tables',
+    schedule: '30 0 * * *',
+    envSchedule: 'EVENTS_AGG_CRON_SCHEDULE',
+  },
+  'user-profile-daily': {
+    id: 'user-profile-daily',
+    name: 'User Profile Daily Update',
+    description: 'Build user profile snapshot from behavior logs and feedback signals',
+    schedule: '40 0 * * *',
+    envSchedule: 'PROFILE_DAILY_CRON_SCHEDULE',
+  },
 };
 
 export function getTask(id: string): OfflineTaskDef | undefined {

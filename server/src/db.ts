@@ -1,16 +1,5 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data.db');
-
-const db: InstanceType<typeof Database> = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+import db from './db/client.js';
 
 // Create tables
 db.exec(`
@@ -93,11 +82,74 @@ db.exec(`
     difficulty_score_simplified INTEGER,
     pub_date TEXT,
     source_name TEXT,
+    fulltext_status TEXT,
+    content_source TEXT,
+    content_len INTEGER,
+    last_crawled_at TEXT,
+    crawl_error TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_articles_pub_date ON articles(pub_date);
   CREATE INDEX IF NOT EXISTS idx_articles_created ON articles(created_at);
 `);
+
+// Migrate: fulltext crawl state for articles
+try {
+  db.exec(`ALTER TABLE articles ADD COLUMN fulltext_status TEXT`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`ALTER TABLE articles ADD COLUMN content_source TEXT`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`ALTER TABLE articles ADD COLUMN content_len INTEGER`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`ALTER TABLE articles ADD COLUMN last_crawled_at TEXT`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`ALTER TABLE articles ADD COLUMN crawl_error TEXT`);
+} catch {
+  // Column already exists
+}
+try {
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_articles_fulltext_status ON articles(fulltext_status, created_at)`);
+} catch {
+  //
+}
+try {
+  db.exec(`
+    UPDATE articles
+    SET
+      content_len = COALESCE(content_len, LENGTH(COALESCE(content, ''))),
+      fulltext_status = COALESCE(
+        fulltext_status,
+        CASE
+          WHEN LENGTH(COALESCE(content, '')) >= 500 THEN 'success'
+          WHEN LENGTH(COALESCE(content, '')) > 0 THEN 'failed'
+          ELSE 'pending'
+        END
+      ),
+      content_source = COALESCE(
+        content_source,
+        CASE
+          WHEN LENGTH(COALESCE(content, '')) >= 500 THEN 'readability'
+          WHEN LENGTH(COALESCE(content, '')) > 0 THEN 'rss_fallback'
+          ELSE 'none'
+        END
+      ),
+      last_crawled_at = COALESCE(last_crawled_at, created_at)
+  `);
+} catch {
+  //
+}
 
 // Migrate: add archived column if it doesn't exist
 try {
@@ -242,6 +294,107 @@ try {
       updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
+} catch {
+  //
+}
+
+// Migrate: unified event logging (raw + daily aggregates)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events_raw (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      session_id TEXT,
+      request_id TEXT,
+      event_type TEXT NOT NULL,
+      scene TEXT NOT NULL,
+      item_id TEXT,
+      item_type TEXT DEFAULT '',
+      position INTEGER,
+      score REAL,
+      dwell_ms INTEGER,
+      metadata_json TEXT DEFAULT '{}',
+      occurred_at TEXT NOT NULL,
+      event_date TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_raw_date ON events_raw(event_date)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_raw_user ON events_raw(user_id, event_date)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_raw_item ON events_raw(scene, item_id, event_date)`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events_daily_agg (
+      date TEXT NOT NULL,
+      scene TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      item_type TEXT NOT NULL DEFAULT '',
+      events_count INTEGER DEFAULT 0,
+      unique_users INTEGER DEFAULT 0,
+      unique_items INTEGER DEFAULT 0,
+      avg_dwell_ms REAL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (date, scene, event_type, item_type)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS item_engagement_daily (
+      date TEXT NOT NULL,
+      scene TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      impressions INTEGER DEFAULT 0,
+      clicks INTEGER DEFAULT 0,
+      plays INTEGER DEFAULT 0,
+      completions INTEGER DEFAULT 0,
+      avg_dwell_ms REAL,
+      ctr REAL DEFAULT 0,
+      completion_rate REAL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (date, scene, item_id)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_item_engagement_scene_date ON item_engagement_daily(scene, date)`);
+} catch {
+  //
+}
+
+// Migrate: daily user profile snapshot derived from behavior logs
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_profile_daily (
+      user_id TEXT PRIMARY KEY,
+      snapshot_date TEXT NOT NULL,
+      interest_keywords_json TEXT DEFAULT '[]',
+      dislike_keywords_json TEXT DEFAULT '[]',
+      preferred_scene TEXT,
+      avg_dwell_ms REAL,
+      article_ctr REAL,
+      audio_completion_rate REAL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_user_profile_daily_date ON user_profile_daily(snapshot_date)`);
+} catch {
+  //
+}
+
+// Migrate: daily pipeline run checkpoints (resume from failed step)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS daily_pipeline_runs (
+      run_date TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'running',
+      last_step TEXT,
+      steps_json TEXT DEFAULT '{}',
+      error TEXT,
+      started_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_daily_pipeline_runs_status ON daily_pipeline_runs(status, updated_at)`);
 } catch {
   //
 }
@@ -592,7 +745,7 @@ export function getArticlesTop2PerSourceForAudio(): DbArticle[] {
 
 /** Finance + Tech source names for daily hot audio. */
 const FINANCE_TECH_SOURCES = [
-  'Yahoo Finance', 'CNN Business', 'NPR Business', 'CNBC', 'Reuters',
+  'Yahoo Finance', 'CNN Business', 'NPR Business',
   'CNN Tech', 'TechCrunch', 'Ars Technica', 'NPR Technology',
 ];
 

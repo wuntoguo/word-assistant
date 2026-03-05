@@ -1,17 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from './auth.js';
-import { getRecommendedArticles, buildUserProfile, buildRecommendationReason, computeFreshnessScore, scoreWithFreshness } from '../recommendation.js';
-import {
-  recordShownArticles,
-  getVocabStoriesForRecommend,
-  getFeedbackByUser,
-  getShownArticleKeysInLast3Days,
-  getArticleShowCounts,
-} from '../db.js';
-
-function demotionFactor(showCount: number): number {
-  return 1 / (1 + 0.2 * Math.max(0, showCount));
-}
+import { getRecommendedArticles, buildUserProfile } from '../recommendation.js';
+import { recordShownArticles, getArticleShowCounts } from '../repositories/recommendCacheRepo.js';
+import { blendVocabStories, buildRankedPayload, diversifyFinanceTravel } from '../services/recommend/blendService.js';
 
 export const recommendRouter = Router();
 
@@ -36,89 +27,22 @@ recommendRouter.get('/', authMiddleware, async (req: Request, res: Response) => 
   const userId = (req as any).userId;
   const limit = Math.min(20, Math.max(1, parseInt((req.query.limit as string) || '10', 10)));
   const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10));
-  const showDebug = (req.query.debug as string) !== 'false';
+  const showDebug = (req.query.debug as string) === 'true';
 
   try {
     const { articles, profile, hasMore } = await getRecommendedArticles(userId, limit, showDebug, offset);
     const showCounts = getArticleShowCounts(userId);
 
-    let payload = articles.map((s) => {
-      const freshness = computeFreshnessScore(s.article);
-      const cnt = showCounts.get(s.article.source_url) ?? 0;
-      const withFreshness = scoreWithFreshness(s.totalScore, freshness, s.article);
-      const adjustedTotal = withFreshness * demotionFactor(cnt);
-      return {
-        id: s.article.id,
-        _adjustedTotal: adjustedTotal,
-        title: s.article.title,
-        link: s.article.source_url,
-        pubDate: s.article.pub_date,
-        description: s.article.simplified_content?.slice(0, 300) || s.article.content?.slice(0, 300) || '',
-        simplified: s.article.simplified_content || s.article.content || '',
-        source: s.article.source_name,
-        keywords: (() => {
-          try {
-            return JSON.parse(s.article.keywords) as string[];
-          } catch {
-            return [];
-          }
-        })(),
-        difficulty: s.article.difficulty_simplified || s.article.difficulty_original,
-        scores: showDebug
-          ? {
-              interestScore: s.interestScore,
-              difficultyScore: s.difficultyScore,
-              totalScore: s.totalScore,
-              interestReason: s.interestReason,
-              difficultyReason: s.difficultyReason,
-              freshnessScore: freshness,
-              showCount: cnt,
-              adjustedTotal: Math.round(adjustedTotal * 10) / 10,
-            }
-          : undefined,
-        recommendationReason: buildRecommendationReason(s.interestScore, s.difficultyScore, s.totalScore, s.interestReason, s.difficultyReason),
-        isVocabStory: false,
-      };
-    });
-
-    if (offset === 0) {
-      const excludeKeys = new Set([
-        ...getFeedbackByUser(userId, 100).map((f) => f.article_key),
-        ...getShownArticleKeysInLast3Days(userId),
-        ...payload.map((p) => p.link),
-      ]);
-      const vocabStories = getVocabStoriesForRecommend(userId, excludeKeys, 2);
-      const vocabPayload = vocabStories.map((a) => ({
-        id: a.id,
-        title: a.title,
-        link: a.source_url,
-        pubDate: a.pub_date,
-        description: (a.simplified_content || a.content || '').slice(0, 300),
-        simplified: a.simplified_content || a.content || '',
-        source: a.source_name || 'FeedLingo Vocab Story',
-        keywords: (() => {
-          try {
-            return JSON.parse(a.keywords) as string[];
-          } catch {
-            return [];
-          }
-        })(),
-        difficulty: a.difficulty_simplified || a.difficulty_original,
-        _adjustedTotal: 96,
-        scores: showDebug ? { interestScore: 90, difficultyScore: 100, totalScore: 96, interestReason: 'Personalized from your vocabulary', difficultyReason: 'Matches your level', freshnessScore: 100, showCount: 0, adjustedTotal: 96 } : undefined,
-        recommendationReason: buildRecommendationReason(90, 100, 96, 'Personalized from your vocabulary', 'Matches your level'),
-        isVocabStory: true,
-      }));
-      const combined = [...payload, ...vocabPayload];
-      payload = combined.sort((a, b) => (b._adjustedTotal ?? 0) - (a._adjustedTotal ?? 0));
-    }
+    const rankedPayload = buildRankedPayload(articles, showCounts, showDebug);
+    const blendedPayload = blendVocabStories(userId, offset, rankedPayload, showDebug, showCounts);
+    const diversifiedPayload = diversifyFinanceTravel(blendedPayload, offset);
 
     recordShownArticles(
       userId,
-      payload.map((p) => p.link)
+      diversifiedPayload.map((p) => p.link)
     );
 
-    const cleanPayload = payload.map(({ _adjustedTotal, ...p }) => p);
+    const cleanPayload = diversifiedPayload.map(({ _adjustedTotal, ...p }) => p);
 
     res.json({
       articles: cleanPayload,

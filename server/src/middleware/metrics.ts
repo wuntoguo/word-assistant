@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { incrementMetric } from '../db.js';
+import { incrementMetric } from '../repositories/metricsRepo.js';
 
 const SKIP_PATHS = ['/api/health', '/api/admin'];
 export function metricsMiddleware(req: Request, res: Response, next: NextFunction) {

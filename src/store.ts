@@ -183,11 +183,8 @@ export function getActivityForWeek(startDate: string, endDate: string): DayActiv
   let readingWords = 0;
   let listeningSeconds = 0;
   let reviews = 0;
-  const start = new Date(startDate).getTime();
-  const end = new Date(endDate).getTime();
   for (const [d, day] of Object.entries(stats)) {
-    const t = new Date(d).getTime();
-    if (t >= start && t <= end) {
+    if (d >= startDate && d <= endDate) {
       reads += day.reads ?? 0;
       readingSeconds += day.readingSeconds ?? 0;
       readingWords += day.readingWords ?? 0;

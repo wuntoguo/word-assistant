@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from './auth.js';
-import { getUserProfile, upsertUserProfile } from '../db.js';
+import { getUserProfile, upsertUserProfile } from '../repositories/userRepo.js';
 
 export const profileRouter = Router();
 

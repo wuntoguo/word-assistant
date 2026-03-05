@@ -6,7 +6,7 @@
 import cron from 'node-cron';
 import { OFFLINE_TASKS } from './registry.js';
 import { runTask, runDailyPipeline } from './runner.js';
-import { getArticlesForAudioGeneration } from '../db.js';
+import { getArticlesForAudioGeneration } from '../repositories/articleRepo.js';
 import { getArticleAudioPath } from '../articleTts.js';
 
 /** One-time seed: if articles exist but no audio, run article-audio in background (helps fresh deploys). */
@@ -45,7 +45,7 @@ export function setupScheduler(): void {
     cron.schedule(crawlSchedule, async () => {
       console.log('[Offline] Running daily crawl pipeline...');
       try {
-        const { crawl, embeddingRefresh, precompute } = await runDailyPipeline();
+        const { crawl, eventsAgg, profileDaily, embeddingRefresh, precompute } = await runDailyPipeline();
         if (crawl.ok) {
           const d = crawl.data as { ingested: number; skipped: number; errors: string[]; durationMs: number };
           console.log(`[Offline] Crawl done: ingested=${d.ingested} skipped=${d.skipped} errors=${d.errors?.length ?? 0} in ${d.durationMs}ms`);
@@ -61,6 +61,18 @@ export function setupScheduler(): void {
         if (precompute?.ok) {
           const p = precompute.data as { usersProcessed: number; articlesScored: number };
           console.log(`[Offline] Precompute done: ${p.usersProcessed} users, ${p.articlesScored} articles scored`);
+        }
+        if (eventsAgg?.ok) {
+          const ev = eventsAgg.data as { date: string; summaryRows: number; itemRows: number };
+          console.log(`[Offline] Events agg: date=${ev.date} summaryRows=${ev.summaryRows} itemRows=${ev.itemRows}`);
+        } else if (eventsAgg && !eventsAgg.ok) {
+          console.error('[Offline] Events agg failed:', eventsAgg.error);
+        }
+        if (profileDaily?.ok) {
+          const p = profileDaily.data as { snapshotDate: string; usersProcessed: number; usersUpdated: number };
+          console.log(`[Offline] Profile daily: date=${p.snapshotDate} users=${p.usersUpdated}/${p.usersProcessed}`);
+        } else if (profileDaily && !profileDaily.ok) {
+          console.error('[Offline] Profile daily failed:', profileDaily.error);
         }
       } catch (err) {
         console.error('[Offline] Daily pipeline failed:', err);

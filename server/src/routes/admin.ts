@@ -1,13 +1,16 @@
 import { Router, Request, Response } from 'express';
 import {
-  getCrawlReports,
-  getMetricsRange,
-  getMetricsForDate,
-  getArticleCount,
-  getArticleCountBySource,
   getArticleCountByDay,
   getArticlesForRecommendation,
-} from '../db.js';
+  getArticleCount,
+  getArticleCountBySource,
+  getUserCount,
+  getWordCount,
+  getArticleFeedbackCount,
+  getDistinctFeedbackUsersOnDate,
+} from '../repositories/articleRepo.js';
+import { getCrawlReports } from '../repositories/crawlReportRepo.js';
+import { getMetricsRange, getMetricsForDate } from '../repositories/metricsRepo.js';
 import { formatDailyReport } from '../dailyCrawler.js';
 
 export const adminRouter = Router();
@@ -49,8 +52,7 @@ adminRouter.get('/metrics', requireAdmin, (req: Request, res: Response) => {
 });
 
 // GET /api/admin/dashboard - summary for monitoring
-adminRouter.get('/dashboard', requireAdmin, async (req: Request, res: Response) => {
-  const { default: db } = await import('../db.js');
+adminRouter.get('/dashboard', requireAdmin, (req: Request, res: Response) => {
   const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 864e5).toISOString().split('T')[0];
 
@@ -59,27 +61,20 @@ adminRouter.get('/dashboard', requireAdmin, async (req: Request, res: Response) 
 
   const articleCount = getArticleCount();
 
-  const usersRow = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
-  const wordsRow = db.prepare('SELECT COUNT(*) as c FROM words').get() as { c: number };
-  const feedbackRow = db.prepare('SELECT COUNT(*) as c FROM article_feedback').get() as { c: number };
-  const distinctUsersFeedback = db.prepare(
-    'SELECT COUNT(DISTINCT user_id) as c FROM article_feedback WHERE date(created_at) = ?'
-  ).get(today) as { c: number } | undefined;
-
   const recentReports = getCrawlReports(7);
   const articlesBySource = getArticleCountBySource();
   const articlesByDay = getArticleCountByDay(14);
 
   res.json({
     overview: {
-      totalUsers: usersRow?.c ?? 0,
-      totalWords: wordsRow?.c ?? 0,
+      totalUsers: getUserCount(),
+      totalWords: getWordCount(),
       totalArticles: articleCount,
-      totalArticleReads: feedbackRow?.c ?? 0,
+      totalArticleReads: getArticleFeedbackCount(),
     },
     today: {
       ...metricsToday,
-      uniqueReaders: distinctUsersFeedback?.c ?? 0,
+      uniqueReaders: getDistinctFeedbackUsersOnDate(today),
     },
     yesterday: metricsYesterday,
     recentCrawlReports: recentReports,

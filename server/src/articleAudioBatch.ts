@@ -4,7 +4,7 @@
  */
 
 import fs from 'fs';
-import { getArticlesForAudioGeneration } from './db.js';
+import { getArticlesForAudioGeneration } from './repositories/articleRepo.js';
 import { generateArticleAudio, getArticleAudioPath, getArticleAudioDurationSeconds, getAudioDir } from './articleTts.js';
 
 const MIN_ACCEPTABLE_DURATION_SEC = 90; // Re-generate if audio < 1.5 min

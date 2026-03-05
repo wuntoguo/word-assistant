@@ -1,12 +1,21 @@
 import { Router, Request, Response } from 'express';
 import Parser from 'rss-parser';
+import net from 'node:net';
 import { runDailyIngest, runInit } from '../articleIngest.js';
-import { getAllArticles, getArticleCount } from '../db.js';
+import {
+  getAllArticles,
+  getArticleCount,
+  getArticleById,
+  getArticleByUrl,
+  getDiscoveryFulltextArticles,
+  getDiscoveryFulltextCount,
+} from '../repositories/articleRepo.js';
 import OpenAI from 'openai';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 
 export const discoveryRouter = Router();
+const OPS_SECRET = process.env.CRON_SECRET || process.env.ADMIN_SECRET || '';
 
 const parser = new Parser({ timeout: 10000 });
 
@@ -23,10 +32,74 @@ interface RawArticle {
   creator?: string;
 }
 
+function isAuthorizedOpsRequest(req: Request): boolean {
+  if (!OPS_SECRET) return false;
+  const auth = req.headers.authorization || req.headers['x-cron-secret'] || req.query?.secret;
+  const token = typeof auth === 'string' ? auth.replace(/^Bearer\s+/i, '') : String(auth || '');
+  return token === OPS_SECRET;
+}
+
+function requireOpsAuth(req: Request, res: Response, next: () => void): void {
+  if (!isAuthorizedOpsRequest(req)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+}
+
+function isPrivateIp(hostname: string): boolean {
+  if (!net.isIP(hostname)) return false;
+  if (hostname === '::1' || hostname === '0:0:0:0:0:0:0:1') return true;
+
+  if (hostname.includes(':')) {
+    const normalized = hostname.toLowerCase();
+    return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80');
+  }
+
+  const parts = hostname.split('.').map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+  const [a, b] = parts;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function isSafeArticleUrl(rawUrl: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+
+  if (!['http:', 'https:'].includes(u.protocol)) return false;
+  if (u.username || u.password) return false;
+
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local')) return false;
+  if (isPrivateIp(host)) return false;
+
+  const allowList = (process.env.DISCOVERY_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (allowList.length > 0) {
+    return allowList.some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+  }
+
+  return true;
+}
+
 export interface DiscoveryArticle {
   title: string;
   link: string;
   pubDate: string;
+  postedAt?: string | null;
+  crawledAt?: string | null;
   description: string;
   simplified: string;
   source?: string;
@@ -46,35 +119,82 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+function normalizePubDate(rawPubDate?: string | null, rawIsoDate?: string | null): string {
+  const candidates = [rawIsoDate, rawPubDate];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return new Date().toISOString();
+}
+
+const SIMPLIFY_CHARS_PER_CHUNK = 2200;
+const MAX_SIMPLIFY_CHUNKS = 8;
+
+function splitForSimplify(text: string): string[] {
+  const cleaned = text.replace(/\r\n/g, '\n').trim();
+  if (cleaned.length <= SIMPLIFY_CHARS_PER_CHUNK) return [cleaned];
+
+  const paragraphs = cleaned.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let current = '';
+  for (const p of paragraphs) {
+    const next = current ? `${current}\n\n${p}` : p;
+    if (next.length <= SIMPLIFY_CHARS_PER_CHUNK) {
+      current = next;
+      continue;
+    }
+    if (current) chunks.push(current);
+    if (p.length <= SIMPLIFY_CHARS_PER_CHUNK) {
+      current = p;
+      continue;
+    }
+    for (let i = 0; i < p.length; i += SIMPLIFY_CHARS_PER_CHUNK) {
+      chunks.push(p.slice(i, i + SIMPLIFY_CHARS_PER_CHUNK));
+    }
+    current = '';
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 async function simplifyWithGPT(text: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || text.length < 50) return text;
 
   const openai = new OpenAI({ apiKey });
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an English teaching assistant. Rewrite the given text to be suitable for IELTS Reading band 6 (intermediate level, B2). 
-- Keep the same meaning and structure
-- Use simpler vocabulary (common words, avoid jargon)
-- Shorten complex sentences into 2 shorter sentences if needed
-- Maximum 2 sentences per idea
-- Preserve proper nouns, company names, numbers
-- Output ONLY the rewritten text, no explanations`,
-        },
-        {
-          role: 'user',
-          content: text,
-        },
-      ],
-      max_tokens: 1000,
-    });
-
-    const result = completion.choices[0]?.message?.content?.trim();
-    return result || text;
+    const chunks = splitForSimplify(text);
+    const rewritten: string[] = [];
+    for (const chunk of chunks.slice(0, MAX_SIMPLIFY_CHUNKS)) {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an English teaching assistant. Rewrite to B2 level while preserving exact meaning.
+- Do NOT omit or add facts.
+- Keep names, numbers, dates, percentages, and entities unchanged.
+- Keep paragraph structure close to original.
+- Use simpler vocabulary and shorter sentences only.
+- Output ONLY rewritten text.`,
+          },
+          { role: 'user', content: chunk },
+        ],
+        max_tokens: 1200,
+      });
+      const result = completion.choices[0]?.message?.content?.trim() || '';
+      if (!result) {
+        rewritten.push(chunk);
+        continue;
+      }
+      const inWords = chunk.split(/\s+/).filter(Boolean).length;
+      const outWords = result.split(/\s+/).filter(Boolean).length;
+      rewritten.push(outWords < Math.max(40, Math.floor(inWords * 0.45)) ? chunk : result);
+    }
+    if (chunks.length > MAX_SIMPLIFY_CHUNKS) rewritten.push(...chunks.slice(MAX_SIMPLIFY_CHUNKS));
+    return rewritten.join('\n\n').trim() || text;
   } catch {
     return text;
   }
@@ -93,7 +213,7 @@ async function fetchAndProcessFeed(): Promise<RawArticle[]> {
     raw.push({
       title: item.title || 'Untitled',
       link: item.link || '',
-      pubDate: item.pubDate || new Date().toISOString(),
+      pubDate: normalizePubDate(item.pubDate || null, (item as any).isoDate || null),
       description,
       creator: item.creator,
     });
@@ -101,7 +221,7 @@ async function fetchAndProcessFeed(): Promise<RawArticle[]> {
   return raw;
 }
 
-discoveryRouter.get('/debug/articles', async (req: Request, res: Response) => {
+discoveryRouter.get('/debug/articles', requireOpsAuth, async (req: Request, res: Response) => {
   try {
     const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || '50', 10)));
     const raw = getAllArticles(limit);
@@ -132,7 +252,7 @@ discoveryRouter.get('/debug/articles', async (req: Request, res: Response) => {
   }
 });
 
-discoveryRouter.post('/init', async (req: Request, res: Response) => {
+discoveryRouter.post('/init', requireOpsAuth, async (req: Request, res: Response) => {
   try {
     const count = Math.min(20, Math.max(1, parseInt((req.query.count as string) || '20', 10)));
     const result = await runInit(count);
@@ -143,7 +263,7 @@ discoveryRouter.post('/init', async (req: Request, res: Response) => {
   }
 });
 
-discoveryRouter.post('/ingest', async (_req: Request, res: Response) => {
+discoveryRouter.post('/ingest', requireOpsAuth, async (_req: Request, res: Response) => {
   try {
     const result = await runDailyIngest();
     res.json(result);
@@ -155,44 +275,63 @@ discoveryRouter.post('/ingest', async (_req: Request, res: Response) => {
 
 discoveryRouter.get('/articles', async (req: Request, res: Response) => {
   const offset = Math.max(0, parseInt(req.query.offset as string || '0', 10));
-  const limit = Math.min(10, Math.max(1, parseInt(req.query.limit as string || '2', 10)));
+  const limit = Math.min(10, Math.max(1, parseInt(req.query.limit as string || '10', 10)));
+  const daysBack = Math.max(1, parseInt(process.env.DISCOVERY_DAYS_BACK || '3', 10));
 
-  const now = Date.now();
-  if (!cacheData || now - cacheData.fetchedAt >= CACHE_TTL) {
-    try {
-      const raw = await fetchAndProcessFeed();
-      cacheData = { data: raw, fetchedAt: Date.now() };
-    } catch (err) {
-      console.error('Discovery fetch error:', err);
-      if (cacheData?.data) {
-        // Use stale cache
-      } else {
-        res.status(500).json({ error: 'Failed to fetch discovery articles' });
-        return;
+  const totalFulltext = getDiscoveryFulltextCount(daysBack);
+  const fulltextRows = getDiscoveryFulltextArticles(offset, limit, daysBack);
+  const articles: DiscoveryArticle[] = fulltextRows.map((a) => {
+    const full = (a.simplified_content || a.content || '').trim();
+    const preview = full.slice(0, 600);
+    return {
+      title: a.title,
+      link: a.source_url,
+      pubDate: a.pub_date || a.created_at || new Date().toISOString(),
+      postedAt: a.pub_date || null,
+      crawledAt: a.created_at || null,
+      description: preview,
+      simplified: preview,
+      source: a.source_name || 'Unknown',
+    };
+  });
+
+  // Fallback: if fulltext pool is temporarily small, fill remainder with RSS summary.
+  if (articles.length < limit) {
+    const now = Date.now();
+    if (!cacheData || now - cacheData.fetchedAt >= CACHE_TTL) {
+      try {
+        const raw = await fetchAndProcessFeed();
+        cacheData = { data: raw, fetchedAt: Date.now() };
+      } catch (err) {
+        console.error('Discovery fallback RSS fetch error:', err);
+      }
+    }
+    if (cacheData?.data?.length) {
+      const rssNeed = limit - articles.length;
+      const rssOffset = Math.max(0, offset - totalFulltext);
+      const rawSlice = cacheData.data.slice(rssOffset, rssOffset + rssNeed);
+      for (const r of rawSlice) {
+        articles.push({
+          title: r.title,
+          link: r.link,
+          pubDate: r.pubDate,
+          postedAt: r.pubDate || null,
+          crawledAt: null,
+          description: r.description,
+          simplified: r.description,
+          source: r.creator || 'Yahoo Finance',
+        });
       }
     }
   }
 
-  const rawSlice = (cacheData!.data).slice(offset, offset + limit);
-  const articles: DiscoveryArticle[] = [];
-
-  for (const r of rawSlice) {
-    const simplified = await simplifyWithGPT(r.description);
-    articles.push({
-      title: r.title,
-      link: r.link,
-      pubDate: r.pubDate,
-      description: r.description,
-      simplified,
-      source: r.creator || 'Yahoo Finance',
-    });
-  }
-
+  const rssTotal = cacheData?.data?.length || 0;
+  const total = totalFulltext + rssTotal;
   res.json({
     articles,
-    hasMore: offset + limit < cacheData!.data.length,
-    total: cacheData!.data.length,
-    cached: now - cacheData!.fetchedAt < CACHE_TTL,
+    hasMore: offset + articles.length < total,
+    total,
+    fulltextTotal: totalFulltext,
   });
 });
 
@@ -202,7 +341,6 @@ discoveryRouter.get('/article-by-id/:id', async (req: Request, res: Response) =>
     res.status(400).json({ error: 'Article id required' });
     return;
   }
-  const { getArticleById } = await import('../db.js');
   const article = getArticleById(id);
   if (!article) {
     res.status(404).json({ error: 'Article not found' });
@@ -219,12 +357,11 @@ discoveryRouter.get('/article-by-id/:id', async (req: Request, res: Response) =>
 discoveryRouter.get('/article-content', async (req: Request, res: Response) => {
   const url = req.query.url as string;
   const fallbackSnippet = (req.query.fallback as string)?.trim();
-  if (!url || !url.startsWith('http')) {
+  if (!url || !isSafeArticleUrl(url)) {
     res.status(400).json({ error: 'Valid url is required' });
     return;
   }
 
-  const { getArticleByUrl } = await import('../db.js');
   const fromDb = getArticleByUrl(url);
   if (fromDb?.content) {
     res.json({

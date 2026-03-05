@@ -10,7 +10,14 @@ import {
 } from '../store';
 import { getTodayString, getWeekRange, getWordsInDateRange } from '../utils';
 import { getActivityForDate, getActivityForWeek } from '../store';
-import { fetchLevel, fetchProfile, updateProfile, type UserProfilePreferences } from '../api';
+import {
+  fetchLevel,
+  fetchProfile,
+  updateProfile,
+  fetchMyActivitySummary,
+  type UserProfilePreferences,
+  type ActivitySummary,
+} from '../api';
 
 function formatListening(totalMinutes: number): string {
   if (totalMinutes < 1) return '—';
@@ -101,6 +108,8 @@ export default function ProfileStats() {
   );
 
   const [activityRefresh, setActivityRefresh] = useState(0);
+  const [todayServerActivity, setTodayServerActivity] = useState<ActivitySummary | null>(null);
+  const [weekServerActivity, setWeekServerActivity] = useState<ActivitySummary | null>(null);
   const [profilePrefs, setProfilePrefs] = useState<UserProfilePreferences | null>(null);
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileDraft, setProfileDraft] = useState({ keywords: '', levelBand: '' });
@@ -110,6 +119,16 @@ export default function ProfileStats() {
     return () => window.removeEventListener('feedlingo-activity-updated', handler);
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setTodayServerActivity(null);
+      setWeekServerActivity(null);
+      return;
+    }
+    fetchMyActivitySummary(today, today).then((res) => setTodayServerActivity(res));
+    fetchMyActivitySummary(weekRange.start, weekRange.end).then((res) => setWeekServerActivity(res));
+  }, [user?.id, today, weekRange.start, weekRange.end, activityRefresh]);
+
   const todayActivity = useMemo(
     () => getActivityForDate(today),
     [today, activityRefresh]
@@ -118,6 +137,13 @@ export default function ProfileStats() {
     () => getActivityForWeek(weekRange.start, weekRange.end),
     [weekRange.start, weekRange.end, activityRefresh]
   );
+
+  const todayReadingReads = todayServerActivity?.reads ?? todayActivity.reads;
+  const todayReadingSeconds = todayServerActivity?.readingSeconds ?? todayActivity.readingSeconds;
+  const todayReadingWords = todayServerActivity?.readingWords ?? todayActivity.readingWords;
+  const weekReadingReads = weekServerActivity?.reads ?? weekActivity.reads;
+  const weekReadingSeconds = weekServerActivity?.readingSeconds ?? weekActivity.readingSeconds;
+  const weekReadingWords = weekServerActivity?.readingWords ?? weekActivity.readingWords;
 
   const masteredCount = useMemo(
     () => words.filter((w) => w.memoryStage >= 4).length,
@@ -161,15 +187,15 @@ export default function ProfileStats() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="content-wrap">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-slate-800 mb-2">Profile</h1>
-        <p className="text-slate-500">Your vocabulary learning statistics</p>
+        <h1 className="page-title mb-2">Profile</h1>
+        <p className="page-subtitle">Your vocabulary learning statistics</p>
       </div>
 
       {/* Account info */}
       {user && (
-        <div className="bg-white rounded-2xl shadow-md border border-slate-100 p-6 mb-6">
+        <div className="panel p-6 mb-6">
           <div className="flex items-center gap-4">
             {user.avatarUrl ? (
               <img src={user.avatarUrl} alt="" className="w-14 h-14 rounded-full" />
@@ -201,11 +227,11 @@ export default function ProfileStats() {
 
       {/* Recommendation preferences (static profile) */}
       {user && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+        <div className="panel p-6 mb-6">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
             Recommendation Preferences
           </h3>
-          <p className="text-sm text-slate-500 mb-4">
+          <p className="text-sm page-subtitle mb-4">
             Set your interests and level to improve article recommendations. Your feedback (like/dislike, difficulty) also influences future suggestions.
           </p>
           {!profileEditing ? (
@@ -229,7 +255,7 @@ export default function ProfileStats() {
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Interest topics (comma-separated)</label>
+                <label className="block text-xs page-subtitle mb-1">Interest topics (comma-separated)</label>
                 <input
                   type="text"
                   value={profileDraft.keywords}
@@ -239,7 +265,7 @@ export default function ProfileStats() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Preferred level (optional override)</label>
+                <label className="block text-xs page-subtitle mb-1">Preferred level (optional override)</label>
                 <select
                   value={profileDraft.levelBand}
                   onChange={(e) => setProfileDraft((d) => ({ ...d, levelBand: e.target.value }))}
@@ -288,7 +314,7 @@ export default function ProfileStats() {
       )}
 
       {/* English level */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+      <div className="panel p-6 mb-6">
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
           English Level
         </h3>
@@ -296,7 +322,7 @@ export default function ProfileStats() {
           <div className="text-4xl font-bold text-indigo-600">{level.band}</div>
           <div>
             <div className="text-lg font-semibold text-slate-800">{level.label}</div>
-            <div className="text-sm text-slate-500">
+            <div className="text-sm page-subtitle">
               Based on {level.testCount} tests + {level.feedbackCount} reading feedbacks
             </div>
           </div>
@@ -324,7 +350,7 @@ export default function ProfileStats() {
       </div>
 
       {/* Today's activity */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+      <div className="panel p-6 mb-6">
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
           Today
         </h3>
@@ -338,18 +364,18 @@ export default function ProfileStats() {
             <div className="text-sm text-emerald-500">Reviews</div>
           </div>
           <div className="bg-blue-50 rounded-xl p-4">
-            <div className="text-2xl font-bold text-blue-600">{todayActivity.reads}</div>
+            <div className="text-2xl font-bold text-blue-600">{todayReadingReads}</div>
             <div className="text-sm text-blue-500">Articles read</div>
           </div>
           <div className="bg-cyan-50 rounded-xl p-4">
             <div className="text-2xl font-bold text-cyan-600">
-              {formatReadingDuration(todayActivity.readingSeconds)}
+              {formatReadingDuration(todayReadingSeconds)}
             </div>
             <div className="text-sm text-cyan-500">Reading time</div>
           </div>
           <div className="bg-teal-50 rounded-xl p-4">
             <div className="text-2xl font-bold text-teal-600">
-              {formatWordCount(todayActivity.readingWords)}
+              {formatWordCount(todayReadingWords)}
             </div>
             <div className="text-sm text-teal-500">Words read</div>
           </div>
@@ -375,7 +401,7 @@ export default function ProfileStats() {
       </div>
 
       {/* This week's activity */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+      <div className="panel p-6 mb-6">
         <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">
           This week
         </h3>
@@ -390,18 +416,18 @@ export default function ProfileStats() {
             <div className="text-sm text-emerald-500">Reviews</div>
           </div>
           <div className="bg-blue-50 rounded-xl p-4">
-            <div className="text-2xl font-bold text-blue-600">{weekActivity.reads}</div>
+            <div className="text-2xl font-bold text-blue-600">{weekReadingReads}</div>
             <div className="text-sm text-blue-500">Articles read</div>
           </div>
           <div className="bg-cyan-50 rounded-xl p-4">
             <div className="text-2xl font-bold text-cyan-600">
-              {formatReadingDuration(weekActivity.readingSeconds)}
+              {formatReadingDuration(weekReadingSeconds)}
             </div>
             <div className="text-sm text-cyan-500">Reading time</div>
           </div>
           <div className="bg-teal-50 rounded-xl p-4">
             <div className="text-2xl font-bold text-teal-600">
-              {formatWordCount(weekActivity.readingWords)}
+              {formatWordCount(weekReadingWords)}
             </div>
             <div className="text-sm text-teal-500">Words read</div>
           </div>
@@ -416,14 +442,14 @@ export default function ProfileStats() {
 
       {/* Memory stage distribution */}
       {words.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+        <div className="panel p-6 mb-6">
           <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
             Memory Stage Distribution
           </h3>
           <div className="space-y-3">
             {STAGE_LABELS.map((label, i) => (
               <div key={i} className="flex items-center gap-3">
-                <div className="w-20 text-xs text-slate-500 text-right">{label}</div>
+                <div className="w-20 text-xs page-subtitle text-right">{label}</div>
                 <div className="flex-1 bg-slate-100 rounded-full h-6 overflow-hidden">
                   <div
                     className={`h-full rounded-full ${STAGE_COLORS[i]} transition-all duration-500 flex items-center justify-end pr-2`}
@@ -449,9 +475,9 @@ export default function ProfileStats() {
 
       {/* Empty state */}
       {words.length === 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center">
+        <div className="panel p-12 text-center">
           <div className="text-5xl mb-4">&#128218;</div>
-          <p className="text-slate-500">No words yet.</p>
+          <p className="page-subtitle">No words yet.</p>
           <p className="text-sm text-slate-400 mt-1">
             Start looking up words to track your progress!
           </p>

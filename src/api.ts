@@ -56,6 +56,20 @@ export async function loginWithEmail(
   });
 }
 
+export interface AuthProviders {
+  email: boolean;
+  google: boolean;
+  github: boolean;
+}
+
+export async function fetchAuthProviders(): Promise<AuthProviders | null> {
+  try {
+    return await apiFetch<AuthProviders>('/auth/providers');
+  } catch {
+    return null;
+  }
+}
+
 // --- Sync ---
 
 export interface SyncResponse {
@@ -129,6 +143,8 @@ export interface RecommendArticle {
   title: string;
   link: string;
   pubDate: string;
+  postedAt?: string | null;
+  crawledAt?: string | null;
   description: string;
   simplified: string;
   source?: string;
@@ -159,9 +175,9 @@ export interface RecommendResponse {
   };
 }
 
-export async function fetchRecommend(limit = 10, offset = 0): Promise<RecommendResponse | null> {
+export async function fetchRecommend(limit = 10, offset = 0, debug = false): Promise<RecommendResponse | null> {
   try {
-    return await apiFetch<RecommendResponse>(`/recommend?limit=${limit}&offset=${offset}&debug=true`);
+    return await apiFetch<RecommendResponse>(`/recommend?limit=${limit}&offset=${offset}&debug=${debug ? 'true' : 'false'}`);
   } catch {
     return null;
   }
@@ -191,5 +207,25 @@ export async function updateProfile(prefs: UserProfilePreferences): Promise<bool
     return true;
   } catch {
     return false;
+  }
+}
+
+// --- Activity summary ---
+export interface ActivitySummary {
+  startDate: string;
+  endDate: string;
+  reads: number;
+  readingSeconds: number;
+  readingWords: number;
+  listeningSeconds: number;
+  likes: number;
+  dislikes: number;
+}
+
+export async function fetchMyActivitySummary(startDate: string, endDate: string): Promise<ActivitySummary | null> {
+  try {
+    return await apiFetch<ActivitySummary>(`/events/me/summary?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`);
+  } catch {
+    return null;
   }
 }
