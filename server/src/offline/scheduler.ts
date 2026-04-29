@@ -35,6 +35,7 @@ export function setupScheduler(): void {
   scheduleStartupAudioSeed();
   const crawlTask = OFFLINE_TASKS['daily-crawl'];
   const vocabTask = OFFLINE_TASKS['vocab-story'];
+  const cronTimezone = process.env.CRON_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   if (!crawlTask || !vocabTask) return;
 
@@ -77,8 +78,8 @@ export function setupScheduler(): void {
       } catch (err) {
         console.error('[Offline] Daily pipeline failed:', err);
       }
-    });
-    console.log(`[Offline] Scheduled daily crawl at ${crawlSchedule}`);
+    }, { timezone: cronTimezone });
+    console.log(`[Offline] Scheduled daily crawl at ${crawlSchedule} (${cronTimezone})`);
   }
 
   // article-audio: runs at 2am (free Google TTS via node-gtts)
@@ -99,8 +100,8 @@ export function setupScheduler(): void {
         } catch (err) {
           console.error('[Offline] Article audio failed:', err);
         }
-      });
-      console.log(`[Offline] Scheduled article audio at ${audioSchedule}`);
+      }, { timezone: cronTimezone });
+      console.log(`[Offline] Scheduled article audio at ${audioSchedule} (${cronTimezone})`);
     }
   }
 
@@ -118,7 +119,7 @@ export function setupScheduler(): void {
       } catch (err) {
         console.error('[Offline] Vocab story generation failed:', err);
       }
-    });
-    console.log(`[Offline] Scheduled vocab story at ${vocabSchedule}`);
+    }, { timezone: cronTimezone });
+    console.log(`[Offline] Scheduled vocab story at ${vocabSchedule} (${cronTimezone})`);
   }
 }

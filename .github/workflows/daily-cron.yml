@@ -1,38 +1,28 @@
-# 每日爬取 + 推荐预计算（解决 Fly.io scale-to-zero 时 cron 不运行）
-# 需在 Repo Settings → Secrets 添加 CRON_SECRET
+# 手动触发 Hetzner 上的 daily pipeline。
+# 自动定时由应用内置 scheduler 负责，避免和 GitHub Actions 双调度。
 name: Daily Crawl
 
 on:
-  schedule:
-    # 美西早上 07:00（自动覆盖冬令时/夏令时）
-    # - PST(UTC-8): 15:00 UTC
-    # - PDT(UTC-7): 14:00 UTC
-    - cron: '0 14 * * *'
-    - cron: '0 15 * * *'
-  workflow_dispatch:      # 支持手动运行
+  workflow_dispatch:
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger daily pipeline (async - 立即返回，后台执行约 5–10 分钟)
+      - name: Trigger daily pipeline and wait for completion
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_BASE_URL: http://178.104.239.25
         run: |
-          # 只在美西时间 07:00 触发，避免双 cron 在非目标小时执行
-          LA_HOUR=$(TZ=America/Los_Angeles date +%H)
-          if [ "$LA_HOUR" != "07" ]; then
-            echo "Skip: current America/Los_Angeles hour is $LA_HOUR, target is 07."
-            exit 0
-          fi
-
           # 去掉可能的换行（粘贴时带入）
           CRON_SECRET=$(printf '%s' "$CRON_SECRET" | tr -d '\n\r')
           if [ -z "$CRON_SECRET" ]; then
-            echo "::error::CRON_SECRET not set. Add it in Repo Settings → Secrets (must match Fly.io)."
+            echo "::error::CRON_SECRET not set. Add it in Repo Settings → Secrets (must match Hetzner app env)."
             exit 1
           fi
-          resp=$(curl -s -w "\n%{http_code}" -X POST "https://feedlingo.fly.dev/api/cron/daily?async=1" \
+          RUN_DATE=$(TZ=America/Los_Angeles date +%F)
+
+          resp=$(curl -s -w "\n%{http_code}" -X POST "$APP_BASE_URL/api/cron/daily?async=1&reset=1&date=$RUN_DATE" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json") || true
           code=$(echo "$resp" | tail -n1)
@@ -43,3 +33,31 @@ jobs:
             echo "::error::Expected 202, got $code. Check CRON_SECRET in repo secrets."
             exit 1
           fi
+
+          # Poll final run status (up to 30 minutes)
+          for i in $(seq 1 60); do
+            status_resp=$(curl -s -w "\n%{http_code}" "$APP_BASE_URL/api/cron/daily-status?date=$RUN_DATE" \
+              -H "Authorization: Bearer $CRON_SECRET") || true
+            status_code=$(echo "$status_resp" | tail -n1)
+            status_body=$(echo "$status_resp" | sed '$d')
+            echo "Poll #$i HTTP $status_code body=$status_body"
+            if [ "$status_code" != "200" ]; then
+              sleep 30
+              continue
+            fi
+
+            status=$(echo "$status_body" | jq -r '.status // "missing"')
+            if [ "$status" = "success" ]; then
+              echo "Daily pipeline success for $RUN_DATE"
+              exit 0
+            fi
+            if [ "$status" = "failed" ]; then
+              err=$(echo "$status_body" | jq -r '.error // "unknown error"')
+              echo "::error::Daily pipeline failed: $err"
+              exit 1
+            fi
+            sleep 30
+          done
+
+          echo "::error::Daily pipeline did not finish within 30 minutes."
+          exit 1
