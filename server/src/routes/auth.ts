@@ -379,5 +379,6 @@ authRouter.get('/me', authMiddleware, (req: Request, res: Response) => {
     name: user.name,
     avatarUrl: user.avatar_url,
     provider: user.provider,
+    onboardingCompleted: !!user.onboarding_completed_at,
   });
 });

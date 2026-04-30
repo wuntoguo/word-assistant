@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, NavLink, Outlet } from 'react-router-dom';
+import { HashRouter, Routes, Route, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAtomValue } from 'jotai';
 import {
   allDueReviewWordsAtom,
@@ -16,6 +16,7 @@ import AudioChannel from './components/AudioChannel';
 import WeeklyTest from './components/WeeklyTest';
 import LoginPage from './components/LoginPage';
 import AuthCallback from './components/AuthCallback';
+import Onboarding from './components/Onboarding';
 
 function SyncStatusIndicator() {
   const syncStatus = useAtomValue(syncStatusAtom);
@@ -157,6 +158,12 @@ function AppContent() {
   const reviewCount = allDueWords.length;
   const user = useAtomValue(userAtom);
   const { triggerSync, fullSync } = useSyncEngine();
+  const navigate = useNavigate();
+
+  // Show onboarding for logged-in users who haven't completed it yet
+  if (user && !user.onboardingCompleted) {
+    return <Onboarding onDone={() => navigate('/', { replace: true })} />;
+  }
 
   return (
     <div className="app-shell">
@@ -257,8 +264,8 @@ function AppContent() {
       {/* Main content */}
       <main className="page-wrap main-stage py-6 md:py-8 pb-24 md:pb-8">
         <Routes>
-          <Route path="/" element={<Discovery />} />
-          <Route path="/discover" element={<Discovery />} />
+          <Route path="/" element={<Discovery onWordAdded={triggerSync} />} />
+          <Route path="/discover" element={<Discovery onWordAdded={triggerSync} />} />
           <Route path="/audio" element={<AudioChannel />} />
           <Route path="/learn" element={<LearnLayout />}>
             <Route index element={<WordLookup onWordAdded={triggerSync} />} />
@@ -270,7 +277,7 @@ function AppContent() {
           <Route path="/profile" element={<ProfileStats />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth-callback" element={<AuthCallback />} />
-          <Route path="*" element={<Discovery />} />
+          <Route path="*" element={<Discovery onWordAdded={triggerSync} />} />
         </Routes>
       </main>
       <MobileBottomNav reviewCount={reviewCount} hasUser={!!user} />

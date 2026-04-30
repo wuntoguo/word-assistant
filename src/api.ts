@@ -56,6 +56,18 @@ export async function loginWithEmail(
   });
 }
 
+// --- Onboarding ---
+
+export type OnboardingMethod = 'exam' | 'word_check' | 'skip';
+
+export async function completeOnboarding(payload:
+  | { method: 'exam'; exam: string; score: number }
+  | { method: 'word_check'; recognizedWords: string[] }
+  | { method: 'skip' }
+): Promise<{ ok: boolean; band: string | null }> {
+  return apiFetch('/onboarding', { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export interface AuthProviders {
   email: boolean;
   google: boolean;
@@ -177,7 +189,7 @@ export interface RecommendResponse {
 
 export async function fetchRecommend(limit = 10, offset = 0, debug = false): Promise<RecommendResponse | null> {
   try {
-    return await apiFetch<RecommendResponse>(`/recommend?limit=${limit}&offset=${offset}&debug=${debug ? 'true' : 'false'}`);
+    return await apiFetch<RecommendResponse>(`/feed/personalized?limit=${limit}&offset=${offset}&debug=${debug ? 'true' : 'false'}`);
   } catch {
     return null;
   }

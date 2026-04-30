@@ -399,6 +399,13 @@ try {
   //
 }
 
+// Migrate: onboarding_completed_at column
+try {
+  db.exec('ALTER TABLE users ADD COLUMN onboarding_completed_at TEXT');
+} catch {
+  // column already exists
+}
+
 // --- User queries ---
 
 export interface DbUser {
@@ -410,6 +417,7 @@ export interface DbUser {
   provider_id: string;
   password_hash: string | null;
   created_at: string;
+  onboarding_completed_at?: string | null;
 }
 
 export function findUserByProvider(provider: string, providerId: string): DbUser | undefined {

@@ -23,6 +23,7 @@ export interface User {
   name: string | null;
   avatarUrl: string | null;
   provider: string;
+  onboardingCompleted: boolean;
 }
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';

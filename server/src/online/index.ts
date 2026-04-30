@@ -14,11 +14,13 @@ import { discoveryRouter } from '../routes/discovery.js';
 import { audioRouter } from '../routes/audio.js';
 import { levelRouter } from '../routes/level.js';
 import { recommendRouter } from '../routes/recommend.js';
+import { feedRouter } from '../routes/feed.js';
 import { vocabStoryRouter } from '../routes/vocabStory.js';
 import { profileRouter } from '../routes/profile.js';
 import { eventsRouter } from '../routes/events.js';
 import { cronRouter } from '../routes/cron.js';
 import { adminRouter } from '../routes/admin.js';
+import { onboardingRouter } from '../routes/onboarding.js';
 import { metricsMiddleware } from '../middleware/metrics.js';
 import { getArticleCountByDay, getArticlesForRecommendation } from '../repositories/articleRepo.js';
 import { getCrawlReports } from '../repositories/crawlReportRepo.js';
@@ -74,9 +76,11 @@ export function setupOnlineRoutes(app: Express): void {
   app.use('/api/audio', audioRouter);
   app.use('/api/level', levelRouter);
   app.use('/api/recommend', recommendRouter);
+  app.use('/api/feed', feedRouter);
   app.use('/api/vocab-story', vocabStoryRouter);
   app.use('/api/profile', profileRouter);
   app.use('/api/events', eventsRouter);
+  app.use('/api/onboarding', onboardingRouter);
   app.use('/api/cron', cronRouter);
   app.use('/api/admin', adminRouter);
 

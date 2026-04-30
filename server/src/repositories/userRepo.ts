@@ -10,6 +10,7 @@ export interface DbUser {
   provider_id: string;
   password_hash: string | null;
   created_at: string;
+  onboarding_completed_at?: string | null;
 }
 
 export interface DbUserProfile {
@@ -53,6 +54,12 @@ export function updateUserPassword(userId: string, passwordHash: string): void {
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
 }
 
+export function markOnboardingComplete(userId: string): void {
+  db.prepare(
+    'UPDATE users SET onboarding_completed_at = ? WHERE id = ?'
+  ).run(new Date().toISOString(), userId);
+}
+
 export function getUserProfile(userId: string): DbUserProfile | undefined {
   return db.prepare('SELECT * FROM user_profiles WHERE user_id = ?')
     .get(userId) as DbUserProfile | undefined;
@@ -81,7 +88,15 @@ export function getActiveUserIds(sinceDays = 14): string[] {
   since.setDate(since.getDate() - sinceDays);
   const sinceStr = since.toISOString().split('T')[0];
   const fromFeedback = db.prepare('SELECT DISTINCT user_id FROM article_feedback WHERE date(created_at) >= ?').all(sinceStr) as { user_id: string }[];
-  const ids = new Set<string>([...fromSync.map((r) => r.user_id), ...fromFeedback.map((r) => r.user_id)]);
+  const fromEvents = db.prepare(`
+    SELECT DISTINCT user_id FROM events_raw
+    WHERE event_date >= ? AND user_id IS NOT NULL AND user_id != ''
+  `).all(sinceStr) as { user_id: string }[];
+  const ids = new Set<string>([
+    ...fromSync.map((r) => r.user_id),
+    ...fromFeedback.map((r) => r.user_id),
+    ...fromEvents.map((r) => r.user_id),
+  ]);
   return [...ids];
 }
 
@@ -98,9 +113,11 @@ export function getActiveUserIdsPage(
       SELECT user_id FROM words
       UNION ALL
       SELECT user_id FROM article_feedback WHERE date(created_at) >= ?
+      UNION ALL
+      SELECT user_id FROM events_raw WHERE event_date >= ? AND user_id IS NOT NULL AND user_id != ''
     )
     ORDER BY user_id
     LIMIT ? OFFSET ?
-  `).all(sinceStr, limit, offset) as { user_id: string }[];
+  `).all(sinceStr, sinceStr, limit, offset) as { user_id: string }[];
   return rows.map((r) => r.user_id);
 }
